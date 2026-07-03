@@ -1,0 +1,12 @@
+node_modules
+dist
+dist-ssr
+*.local
+.DS_Store
+.vite
+npm-debug.log*
+
+# tsc build artifacts from composite project
+vite.config.js
+vite.config.d.ts
+*.tsbuildinfo
