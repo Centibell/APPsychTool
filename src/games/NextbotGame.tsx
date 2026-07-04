@@ -40,8 +40,9 @@ const EYE = 1.6
 // Everything is FAST now — this is a flat-out panic sprint, not a stroll.
 const WALK = 6.6
 const RUN = 12.2
-const BOT_SPEED = 9.5 // noticeably slower than a full sprint, so straightaways buy distance…
+const BOT_SPEED = 11 // a touch under a full sprint, so straightaways still buy distance…
 const BOT_TURN = 2.1 // …and a sluggish turn rate means corners really shake it
+const BOT_COUNT = 2 // two of Mr. G's faces hunt you
 const CATCH_DIST = 1.5
 const HALL_PASSES = 5
 
@@ -68,8 +69,8 @@ const DOOR_REACH = 2.6
 
 // Player-only shortcuts: punched-out gaps in select walls. The bot can't fit
 // (it still treats them as solid), but you can vault through with a running jump.
-const WINDOW_COUNT = 5
-const WINDOW_MIN_DETOUR = 8 // only punch a gap where it saves a real detour
+const WINDOW_COUNT = 3
+const WINDOW_MIN_DETOUR = 9 // only punch a gap where it saves a real detour
 const WINDOW_SILL_H = 1.35 // solid sill you clear
 const WINDOW_LINTEL_Y = 2.75 // solid header above the hole
 const WINDOW_PASS_Y = 1.95 // camera height needed to be through the gap
@@ -85,6 +86,21 @@ interface Door {
   openY: number
   shutY: number
   shut: boolean
+}
+
+// Per-hunter state — each nextbot runs its own copy of the state machine.
+interface Bot {
+  sprite: THREE.Sprite
+  mat: THREE.SpriteMaterial
+  state: BotState
+  stateT: number
+  heading: number
+  waypoint: THREE.Vector3
+  huntUntilStalk: number
+  repositionT: number
+  vanishT: number
+  bfsTimer: number
+  lungeArmed: boolean
 }
 
 const key = (x: number, y: number) => y * COLS + x
@@ -270,6 +286,20 @@ export default function NextbotGame() {
       },
       { c: openCells[0], d: -1 },
     ).c
+    // Second hunter starts far from BOTH the player and the first bot, so the two
+    // approach from different sides rather than stacking on one another.
+    const botCell2 = openCells.reduce(
+      (best, c) => {
+        const d =
+          Math.abs(c[0] - startCell[0]) +
+          Math.abs(c[1] - startCell[1]) +
+          Math.abs(c[0] - botCell[0]) +
+          Math.abs(c[1] - botCell[1])
+        return d > best.d ? { c, d } : best
+      },
+      { c: openCells[0], d: -1 },
+    ).c
+    const spawnCells = [botCell, botCell2].slice(0, BOT_COUNT)
 
     // ── Doors: rare corridor chokepoints that don't disconnect the map when
     //    sealed (so the bot can always reroute — you never hard-trap him).
@@ -516,19 +546,37 @@ export default function NextbotGame() {
       passMeshes.push(m)
     }
 
-    // ── Nextbot (billboard of the teacher's face) ──
+    // ── Nextbots (billboards of the teacher's face) ──
     const faceTex = makeFaceTexture()
-    const botMat = new THREE.SpriteMaterial({ map: faceTex, fog: true, depthWrite: false, transparent: true })
-    const bot = new THREE.Sprite(botMat)
-    bot.scale.set(2.6, 2.6, 1)
-    const botStart = cellCenter(botCell[0], botCell[1])
-    bot.position.set(botStart.x, 1.5, botStart.z)
-    scene.add(bot)
-    let botHeading = 0
+    const bots: Bot[] = spawnCells.map((cell, i) => {
+      const mat = new THREE.SpriteMaterial({ map: faceTex, fog: true, depthWrite: false, transparent: true })
+      const sprite = new THREE.Sprite(mat)
+      sprite.scale.set(2.6, 2.6, 1)
+      const p = cellCenter(cell[0], cell[1])
+      sprite.position.set(p.x, 1.5, p.z)
+      scene.add(sprite)
+      return {
+        sprite,
+        mat,
+        state: 'hunt' as BotState,
+        stateT: 0,
+        heading: 0,
+        waypoint: new THREE.Vector3(p.x, 0, p.z),
+        // Stagger the first stalk so both don't peel off to stare at once.
+        huntUntilStalk: rand(HUNT_BEFORE_STALK) + i * 6,
+        repositionT: 0,
+        vanishT: 0,
+        bfsTimer: 0,
+        lungeArmed: true,
+      }
+    })
 
-    // ── Audio (driven by the bot's state; positional footsteps ride the bot) ──
-    const audio = new GameAudio(camera, bot)
-    let lungeArmed = true
+    // ── Audio (positional footsteps ride a moving anchor kept on the nearest
+    //    hunting bot, so we get 3D panning without a panner per hunter). ──
+    const audioAnchor = new THREE.Object3D()
+    audioAnchor.position.copy(bots[0].sprite.position)
+    scene.add(audioAnchor)
+    const audio = new GameAudio(camera, audioAnchor)
 
     // ── Player "chai latte" viewmodel ──
     const cup = new THREE.Group()
@@ -685,9 +733,14 @@ export default function NextbotGame() {
         if (Math.hypot(d.c.x - camera.position.x, d.c.z - camera.position.z) < DOOR_REACH) {
           d.shut = true
           shutDoors.add(key(d.gx, d.gy))
-          // Cut him off: if he can't see you, he must reroute — or start stalking.
-          if (botState === 'hunt' && !hasLOS(bot.position.x, bot.position.z, camera.position.x, camera.position.z))
-            huntUntilStalk = Math.min(huntUntilStalk, 0.1)
+          // Cut them off: any hunter that can't see you must reroute — or stalk.
+          for (const b of bots) {
+            if (
+              b.state === 'hunt' &&
+              !hasLOS(b.sprite.position.x, b.sprite.position.z, camera.position.x, camera.position.z)
+            )
+              b.huntUntilStalk = Math.min(b.huntUntilStalk, 0.1)
+          }
           return
         }
       }
@@ -726,33 +779,24 @@ export default function NextbotGame() {
     }
 
     // ── AI state ──
-    let botState: BotState = 'hunt'
-    let stateT = 0
-    let huntUntilStalk = rand(HUNT_BEFORE_STALK)
-    let repositionT = 0
-    let vanishT = 0
     let dangerSmooth = 0
 
-    const enterStalk = (spot: THREE.Vector3) => {
-      bot.position.set(spot.x, 1.55, spot.z)
-      botMat.opacity = 0 // materialize in
-      botState = 'stalk'
-      stateT = 0
-      vanishT = 0
-      audio.stopLoop('footsteps')
+    const enterStalk = (b: Bot, spot: THREE.Vector3) => {
+      b.sprite.position.set(spot.x, 1.55, spot.z)
+      b.mat.opacity = 0 // materialize in
+      b.state = 'stalk'
+      b.stateT = 0
+      b.vanishT = 0
       audio.play('stalk')
     }
-    const enterReposition = () => {
-      botState = 'reposition'
-      stateT = 0
-      repositionT = rand(REPOSITION_TIME)
-      audio.stopLoop('footsteps')
+    const enterReposition = (b: Bot) => {
+      b.state = 'reposition'
+      b.stateT = 0
+      b.repositionT = rand(REPOSITION_TIME)
     }
 
     // ── Loop ──
     const clock = new THREE.Clock()
-    let bfsTimer = 0
-    const botWaypoint = new THREE.Vector3(bot.position.x, 0, bot.position.z)
     let bob = 0
     let raf = 0
     const tmp = new THREE.Vector3()
@@ -795,101 +839,130 @@ export default function NextbotGame() {
           grounded = true
         }
 
-        // ── Bot sensing ──
-        const toBotX = bot.position.x - camera.position.x
-        const toBotZ = bot.position.z - camera.position.z
-        const distP = Math.hypot(toBotX, toBotZ) || 0.001
-        const losBot = hasLOS(bot.position.x, bot.position.z, camera.position.x, camera.position.z)
-        const dot = (fwd.x * toBotX + fwd.z * toBotZ) / distP
-        const seen = losBot && dot > 0.62 // player is looking at it
+        // ── Bots: each runs its own copy of the state machine ──
+        let anyHunting = false
+        let footstepBot: Bot | null = null
+        let footstepDist = Infinity
+        let maxDanger = 0
+        let caught = false
 
-        stateT += dt
+        for (const b of bots) {
+          const bp = b.sprite.position
+          const toBotX = bp.x - camera.position.x
+          const toBotZ = bp.z - camera.position.z
+          const distP = Math.hypot(toBotX, toBotZ) || 0.001
+          const losBot = hasLOS(bp.x, bp.z, camera.position.x, camera.position.z)
+          const dotB = (fwd.x * toBotX + fwd.z * toBotZ) / distP
+          const seen = losBot && dotB > 0.62 // player is looking at it
 
-        if (botState === 'hunt') {
-          audio.startLoop('footsteps') // idempotent; pans from the bot in 3D
-          // BFS/LOS chase
-          const pgx = Math.floor(camera.position.x / CELL)
-          const pgy = Math.floor(camera.position.z / CELL)
-          const bgx = Math.floor(bot.position.x / CELL)
-          const bgy = Math.floor(bot.position.z / CELL)
-          bfsTimer -= dt
-          if (losBot) {
-            botWaypoint.set(camera.position.x, 0, camera.position.z)
-          } else if (bfsTimer <= 0) {
-            bfsTimer = 0.15
-            const step = bfsStep(bgx, bgy, pgx, pgy)
-            if (step) {
-              const c = cellCenter(step[0], step[1])
-              botWaypoint.set(c.x, 0, c.z)
+          b.stateT += dt
+
+          if (b.state === 'hunt') {
+            anyHunting = true
+            if (distP < footstepDist) {
+              footstepDist = distP
+              footstepBot = b
+            }
+            // BFS/LOS chase
+            const pgx = Math.floor(camera.position.x / CELL)
+            const pgy = Math.floor(camera.position.z / CELL)
+            const bgx = Math.floor(bp.x / CELL)
+            const bgy = Math.floor(bp.z / CELL)
+            b.bfsTimer -= dt
+            if (losBot) {
+              b.waypoint.set(camera.position.x, 0, camera.position.z)
+            } else if (b.bfsTimer <= 0) {
+              b.bfsTimer = 0.15
+              const step = bfsStep(bgx, bgy, pgx, pgy)
+              if (step) {
+                const c = cellCenter(step[0], step[1])
+                b.waypoint.set(c.x, 0, c.z)
+              }
+            }
+            const desired = Math.atan2(b.waypoint.x - bp.x, b.waypoint.z - bp.z)
+            let diff = desired - b.heading
+            while (diff > Math.PI) diff -= 2 * Math.PI
+            while (diff < -Math.PI) diff += 2 * Math.PI
+            const lunging = losBot && distP < 3.8
+            if (lunging) {
+              if (b.lungeArmed) {
+                audio.play('lunge')
+                b.lungeArmed = false
+              }
+            } else b.lungeArmed = true
+            const turnRate = losBot ? BOT_TURN * 1.7 : BOT_TURN
+            if (lunging) b.heading = desired
+            else b.heading += Math.max(-turnRate * dt, Math.min(turnRate * dt, diff))
+            const floorSpd = losBot ? 0.78 : 0.4
+            const align = lunging ? 1 : 1 - Math.min(Math.abs(diff) / (Math.PI / 2), 1) * (1 - floorSpd)
+            const bs = BOT_SPEED * align * dt
+            tmp.set(bp.x + Math.sin(b.heading) * bs, 0, bp.z + Math.cos(b.heading) * bs)
+            collide(tmp, 0.6)
+            bp.x = tmp.x
+            bp.z = tmp.z
+            bp.y = 1.5 + Math.sin(t * 3 + b.heading) * 0.12
+
+            // Occasionally break off to stalk (not while pouncing on you).
+            b.huntUntilStalk -= dt
+            if (b.huntUntilStalk <= 0 && distP > 7 && !(losBot && distP < 6)) {
+              const spot = findStalkSpot(camera.position.x, camera.position.z, fwd.x, fwd.z)
+              if (spot) enterStalk(b, spot)
+              else b.huntUntilStalk = 1.5
+            }
+
+            // Catch (only a solid, hunting bot bites)
+            if (distP < CATCH_DIST && b.mat.opacity > 0.6) caught = true
+          } else if (b.state === 'stalk') {
+            // Motionless stare; vanishes when you look away or come too close.
+            bp.y = 1.55 + Math.sin(t * 1.4) * 0.04
+            if (!seen) b.vanishT += dt
+            else b.vanishT = 0
+            if (distP < 5 || b.vanishT > STALK_VANISH_LOOKAWAY || b.stateT > STALK_MAX_TIME) enterReposition(b)
+          } else {
+            // reposition — invisible, then re-materialize out of view and hunt
+            b.repositionT -= dt
+            if (b.repositionT <= 0) {
+              const spot = findHuntSpot(camera.position.x, camera.position.z, fwd.x, fwd.z)
+              if (spot) {
+                b.sprite.position.set(spot[0].x, 1.5, spot[0].z)
+                b.heading = Math.atan2(camera.position.x - spot[0].x, camera.position.z - spot[0].z)
+              }
+              b.state = 'hunt'
+              b.stateT = 0
+              b.huntUntilStalk = rand(HUNT_BEFORE_STALK)
+              b.bfsTimer = 0
             }
           }
-          const desired = Math.atan2(botWaypoint.x - bot.position.x, botWaypoint.z - bot.position.z)
-          let diff = desired - botHeading
-          while (diff > Math.PI) diff -= 2 * Math.PI
-          while (diff < -Math.PI) diff += 2 * Math.PI
-          const lunging = losBot && distP < 3.8
-          if (lunging) {
-            if (lungeArmed) {
-              audio.play('lunge')
-              lungeArmed = false
-            }
-          } else lungeArmed = true
-          const turnRate = losBot ? BOT_TURN * 1.7 : BOT_TURN
-          if (lunging) botHeading = desired
-          else botHeading += Math.max(-turnRate * dt, Math.min(turnRate * dt, diff))
-          const floorSpd = losBot ? 0.78 : 0.4
-          const align = lunging ? 1 : 1 - Math.min(Math.abs(diff) / (Math.PI / 2), 1) * (1 - floorSpd)
-          const bs = BOT_SPEED * align * dt
-          tmp.set(bot.position.x + Math.sin(botHeading) * bs, 0, bot.position.z + Math.cos(botHeading) * bs)
-          collide(tmp, 0.6)
-          bot.position.x = tmp.x
-          bot.position.z = tmp.z
-          bot.position.y = 1.5 + Math.sin(t * 3) * 0.12
 
-          // Occasionally break off to stalk (not while pouncing on you).
-          huntUntilStalk -= dt
-          if (huntUntilStalk <= 0 && distP > 7 && !(losBot && distP < 6)) {
-            const spot = findStalkSpot(camera.position.x, camera.position.z, fwd.x, fwd.z)
-            if (spot) enterStalk(spot)
-            else huntUntilStalk = 1.5
-          }
+          // Opacity: fade in when present, fade out while repositioning.
+          const targetOp = b.state === 'reposition' ? 0 : 1
+          b.mat.opacity += (targetOp - b.mat.opacity) * Math.min(1, dt * 7)
+          b.sprite.visible = b.mat.opacity > 0.02
 
-          // Catch (only a solid, hunting bot bites)
-          if (distP < CATCH_DIST && botMat.opacity > 0.6) {
-            ending = true
-            audio.stopLoop('footsteps')
-            audio.stopLoop('heartbeat')
-            audio.stopLoop('ambient')
-            audio.play('catch')
-            document.exitPointerLock()
-            setPhase('caught')
-          }
-        } else if (botState === 'stalk') {
-          // Motionless stare; vanishes when you look away or come too close.
-          bot.position.y = 1.55 + Math.sin(t * 1.4) * 0.04
-          if (!seen) vanishT += dt
-          else vanishT = 0
-          if (distP < 5 || vanishT > STALK_VANISH_LOOKAWAY || stateT > STALK_MAX_TIME) enterReposition()
-        } else {
-          // reposition — invisible, then re-materialize out of view and hunt
-          repositionT -= dt
-          if (repositionT <= 0) {
-            const spot = findHuntSpot(camera.position.x, camera.position.z, fwd.x, fwd.z)
-            if (spot) {
-              bot.position.set(spot[0].x, 1.5, spot[0].z)
-              botHeading = Math.atan2(camera.position.x - spot[0].x, camera.position.z - spot[0].z)
-            }
-            botState = 'hunt'
-            stateT = 0
-            huntUntilStalk = rand(HUNT_BEFORE_STALK)
-            bfsTimer = 0
-          }
+          // Scariest bot drives camera shake + heartbeat.
+          let d = 0
+          if (b.state === 'hunt') d = Math.max(0, 1 - distP / SHAKE_RANGE)
+          else if (b.state === 'stalk') d = 0.3 + 0.25 * Math.max(0, 1 - distP / STALK_MAX_DIST)
+          if (d > maxDanger) maxDanger = d
         }
 
-        // Opacity: fade in when present, fade out while repositioning.
-        const targetOp = botState === 'reposition' ? 0 : 1
-        botMat.opacity += (targetOp - botMat.opacity) * Math.min(1, dt * 7)
-        bot.visible = botMat.opacity > 0.02
+        // Positional footsteps ride the nearest hunter; silent when none hunt.
+        if (anyHunting && footstepBot) {
+          audioAnchor.position.copy(footstepBot.sprite.position)
+          audio.startLoop('footsteps')
+        } else {
+          audio.stopLoop('footsteps')
+        }
+
+        if (caught) {
+          ending = true
+          audio.stopLoop('footsteps')
+          audio.stopLoop('heartbeat')
+          audio.stopLoop('ambient')
+          audio.play('catch')
+          document.exitPointerLock()
+          setPhase('caught')
+        }
 
         // ── Doors: animate + discovery prompt ──
         let nearDoor = false
@@ -919,10 +992,7 @@ export default function NextbotGame() {
         }
 
         // ── Danger → camera shake + grain/red-vignette ──
-        let danger = 0
-        if (botState === 'hunt') danger = Math.max(0, 1 - distP / SHAKE_RANGE)
-        else if (botState === 'stalk') danger = 0.3 + 0.25 * Math.max(0, 1 - distP / STALK_MAX_DIST)
-        dangerSmooth += (Math.min(1, danger) - dangerSmooth) * Math.min(1, dt * 6)
+        dangerSmooth += (Math.min(1, maxDanger) - dangerSmooth) * Math.min(1, dt * 6)
         shakeAmt = dangerSmooth * dangerSmooth
 
         const ms = t * 1000
@@ -1014,9 +1084,10 @@ export default function NextbotGame() {
               <>
                 <h1 className="text-2xl font-bold text-slate-50">Don’t Get Sipped ☕</h1>
                 <p className="mt-3 text-sm leading-relaxed text-slate-300">
-                  You’re Mr. G’s chai latte, lost in the dark. His face hunts you — fast in the open, slow to turn. Round
-                  corners to lose him, and watch for the times he just… stops and stares. Spot a hole punched in a wall?
-                  Take a running jump through it — he’s too big to follow. Grab all {HALL_PASSES} hall passes to escape.
+                  You’re Mr. G’s chai latte, lost in the dark. <span className="text-rose-300">Two</span> of his faces hunt
+                  you — fast in the open, slow to turn. Round corners to lose them, and watch for the times one just… stops
+                  and stares. Spot a rare hole punched in a wall? Take a running jump through it — they’re too big to
+                  follow. Grab all {HALL_PASSES} hall passes to escape.
                 </p>
                 <p className="mt-3 text-xs text-slate-500">
                   WASD move · Shift run · Space jump · Mouse look · <span className="text-cyan-300">E</span> seal a
