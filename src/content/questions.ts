@@ -208,7 +208,7 @@ export const QUESTIONS: Question[] = [
     id: 'q-rods-cones-1',
     type: 'MCQ',
     apUnit: 1,
-    contextId: 'eye-rods-cones',
+    contextId: 'eye-rods',
     targetTerms: ['rods', 'cones'],
     stem: 'While walking on a dark, moonlit path, you can see shapes in your peripheral vision but cannot make out their colors. This is because dim, peripheral vision relies on:',
     options: [

@@ -8,6 +8,7 @@ import {
   kindOf,
   SYSTEMS,
   EYE_BY_ID,
+  EAR_BY_ID,
   type Teaching,
 } from '../content'
 
@@ -126,7 +127,8 @@ function PanelBody({
       <p className="mt-2 text-sm leading-relaxed text-slate-400">{item.functionDeep}</p>
 
       {(() => {
-        const jump = EYE_BY_ID[item.id]?.jumpToRegionId
+        const isEye = !!EYE_BY_ID[item.id]
+        const jump = EYE_BY_ID[item.id]?.jumpToRegionId ?? EAR_BY_ID[item.id]?.jumpToRegionId
         const dest = jump ? getTeaching(jump) : undefined
         if (!jump || !dest) return null
         return (
@@ -134,7 +136,7 @@ function PanelBody({
             onClick={() => onDrill(jump)}
             className="mt-3 w-full rounded-xl border border-sys-occipital/40 bg-sys-occipital/10 px-4 py-2 text-sm font-medium text-sys-occipital transition-transform hover:-translate-y-0.5"
           >
-            Follow the optic nerve → {dest.displayName}
+            Follow the {isEye ? 'optic' : 'auditory'} nerve → {dest.displayName}
           </button>
         )
       })()}

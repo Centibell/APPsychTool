@@ -3,8 +3,10 @@ import { Canvas } from '@react-three/fiber'
 import { PerformanceMonitor, AdaptiveDpr } from '@react-three/drei'
 import { useStore } from '../store'
 import { Brain } from '../brain/Brain'
+import { BrainSkin } from '../brain/BrainSkin'
 import { CellScene } from './CellScene'
 import { EyeModel } from './EyeModel'
+import { EarModel } from './EarModel'
 import { CameraRig } from './CameraRig'
 
 /**
@@ -48,9 +50,15 @@ export function Scene() {
       <pointLight position={[-6, -2, -4]} intensity={26} color="#f0abfc" distance={30} decay={2} />
 
       <Suspense fallback={null}>
-        {view === 'brain' && <Brain />}
+        {view === 'brain' && (
+          <>
+            <BrainSkin />
+            <Brain />
+          </>
+        )}
         {view === 'cell' && <CellScene />}
         {view === 'eye' && <EyeModel />}
+        {view === 'ear' && <EarModel />}
       </Suspense>
 
       <CameraRig />

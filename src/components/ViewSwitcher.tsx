@@ -5,6 +5,7 @@ const VIEWS: { id: SceneView; label: string }[] = [
   { id: 'brain', label: 'Brain' },
   { id: 'cell', label: 'Neuron' },
   { id: 'eye', label: 'Eye' },
+  { id: 'ear', label: 'Ear' },
 ]
 
 // Segmented control to jump between the three sub-scenes. Selection normally

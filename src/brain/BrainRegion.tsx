@@ -12,6 +12,13 @@ const STATE = {
   hover: { fill: 0.24, wire: 0.55, emissive: 0.7 },
   select: { fill: 0.36, wire: 0.85, emissive: 1.15 },
   dim: { fill: 0.035, wire: 0.1, emissive: 0.15 },
+  // Fully faded — used while the realistic skin is covering the brain. The mesh
+  // stays mounted (and clickable, since the skin passes clicks through) but
+  // draws nothing, so no wireframe pokes through the skin.
+  hidden: { fill: 0, wire: 0, emissive: 0 },
+  // The active region in a brain-activity scenario — brighter than a normal
+  // selection, and it pulses (see useFrame) to read as "firing".
+  lit: { fill: 0.5, wire: 1, emissive: 1.7 },
 }
 
 interface Props {
@@ -22,6 +29,9 @@ export function BrainRegion({ regionId }: Props) {
   const hoveredId = useStore((s) => s.hoveredId)
   const selectedId = useStore((s) => s.selectedId)
   const reducedMotion = useStore((s) => s.reducedMotion)
+  const skinOpaque = useStore((s) => s.skinOpaque)
+  const scenarioActive = useStore((s) => s.scenarioActive)
+  const highlightId = useStore((s) => s.highlightId)
   const setHovered = useStore((s) => s.setHovered)
   const select = useStore((s) => s.select)
 
@@ -36,8 +46,14 @@ export function BrainRegion({ regionId }: Props) {
   const fillRefs = useRef<THREE.MeshStandardMaterial[]>([])
   const wireRefs = useRef<THREE.MeshBasicMaterial[]>([])
 
+  const lit = scenarioActive && highlightId === regionId
+
   // Resolve the target visual state each frame from the store.
   const target = useMemo(() => {
+    // Guided scenario: only the active region lights up; everything else dims.
+    if (scenarioActive) return lit ? STATE.lit : STATE.dim
+    // Covered by the opaque skin → fade out (but stay clickable).
+    if (skinOpaque) return STATE.hidden
     const isHovered = hoveredId === regionId
     const isSelected = selectedId === regionId
     const somethingElseSelected = !!selectedId && selectedId !== regionId
@@ -45,14 +61,16 @@ export function BrainRegion({ regionId }: Props) {
     if (isHovered) return STATE.hover
     if (somethingElseSelected) return STATE.dim
     return STATE.base
-  }, [hoveredId, selectedId, regionId])
+  }, [hoveredId, selectedId, regionId, skinOpaque, scenarioActive, lit])
 
-  useFrame((_, delta) => {
+  useFrame((state, delta) => {
     const t = Math.min(1, delta * (reducedMotion ? 60 : 9))
+    // The active scenario region pulses to read as "firing".
+    const pulse = lit && !reducedMotion ? 1 + 0.32 * Math.sin(state.clock.elapsedTime * 4.2) : 1
     for (const m of fillRefs.current) {
       if (!m) continue
       m.opacity += (target.fill - m.opacity) * t
-      m.emissiveIntensity += (target.emissive - m.emissiveIntensity) * t
+      m.emissiveIntensity += (target.emissive * pulse - m.emissiveIntensity) * t
     }
     for (const m of wireRefs.current) {
       if (!m) continue
@@ -71,6 +89,8 @@ export function BrainRegion({ regionId }: Props) {
   }
   const onClick = (e: ThreeEvent<MouseEvent>) => {
     e.stopPropagation()
+    // Don't let clicks hijack the camera / selection mid-scenario.
+    if (scenarioActive) return
     select(regionId)
   }
 

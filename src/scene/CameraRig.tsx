@@ -3,6 +3,7 @@ import { CameraControls } from '@react-three/drei'
 import * as THREE from 'three'
 import { useStore } from '../store'
 import { GEOMETRY, regionCenter } from '../brain/regionGeometry'
+import { NEURON_SCENE_IDS, SYNAPSE_SCENE_IDS } from '../content'
 
 // Per-view overview poses (also the reset pose for each sub-scene).
 type Pose = { pos: [number, number, number]; target: [number, number, number] }
@@ -11,12 +12,14 @@ const OVERVIEWS: Record<string, Pose> = {
   neuron: { pos: [0, 1.6, 7], target: [-0.2, 0, 0] },
   synapse: { pos: [0, 0.5, 5.6], target: [0, 0.25, 0] },
   eye: { pos: [2.6, 1.2, 4.4], target: [0, 0, 0] },
+  ear: { pos: [0.6, 1.4, 6.6], target: [0.2, 0, 0] },
 }
 
 function overviewFor(id: string): Pose {
-  if (id === 'synapse') return OVERVIEWS.synapse
+  if (SYNAPSE_SCENE_IDS.has(id)) return OVERVIEWS.synapse
   if (id.startsWith('eye-')) return OVERVIEWS.eye
-  if (id === 'neuron' || id === 'action-potential') return OVERVIEWS.neuron
+  if (id.startsWith('ear-')) return OVERVIEWS.ear
+  if (NEURON_SCENE_IDS.has(id)) return OVERVIEWS.neuron
   return OVERVIEWS.brain
 }
 

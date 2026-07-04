@@ -113,6 +113,23 @@ export const CONCEPTS: ConceptCard[] = [
     examTips: ['ENDorphins END pain (natural painkillers).'],
   },
 
+  // ── Neural communication (Unit 1) ────────────────────────────────────────
+  {
+    id: 'concept-neuron-types',
+    topic: 'Neural Communication',
+    displayName: 'Neuron Types & the Reflex Arc',
+    anchorRegionId: 'neuron',
+    oneLiner: 'Sensory in, motor out, interneurons between.',
+    functionShort:
+      'Sensory (afferent) neurons carry information in from the senses, motor (efferent) neurons carry commands out to muscles, and interneurons connect them within the CNS.',
+    functionDeep:
+      'In a reflex arc, a sensory neuron sends a signal (like pain) to the spinal cord, an interneuron relays it, and a motor neuron pulls your hand away — before the brain is even involved. Glial cells support, insulate, and nourish all these neurons.',
+    apUnits: [1],
+    apTerms: ['sensory neurons', 'motor neurons', 'interneurons', 'afferent', 'efferent', 'reflex arc', 'glial cells'],
+    relatedIds: ['neuron', 'synapse', 'action-potential'],
+    mnemonic: 'Afferent Arrives (sensory in); Efferent Exits (motor out).',
+  },
+
   // ── Sleep & consciousness (Unit 1) ───────────────────────────────────────
   {
     id: 'concept-rem-sleep',

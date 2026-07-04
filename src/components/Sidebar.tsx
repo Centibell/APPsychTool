@@ -3,8 +3,9 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { useStore } from '../store'
 import {
   ROOT_REGIONS,
-  childrenOf,
+  childItems,
   EYE_STRUCTURES,
+  EAR_STRUCTURES,
   SYSTEMS,
   REGIONS,
   CONCEPTS,
@@ -12,6 +13,9 @@ import {
   type SystemId,
   type Teaching,
 } from '../content'
+
+// The eye/ear sub-scenes have no `system`; give their sidebar sections colors.
+const EAR_COLOR = '#fcd34d'
 
 // Left navigation tree. Every structure is reachable here by keyboard — the
 // accessibility guarantee (§7): content is never 3D-mouse-only.
@@ -27,7 +31,9 @@ function TreeRow({
 }) {
   const selectedId = useStore((s) => s.selectedId)
   const drillInto = useStore((s) => s.drillInto)
-  const kids = childrenOf(item.id)
+  // childItems (not childrenOf) so the eye's sub-structures — rods, cones,
+  // fovea, blind spot — nest under the Retina too, not just brain regions.
+  const kids = childItems(item.id)
   const isSel = selectedId === item.id
 
   return (
@@ -56,7 +62,10 @@ function SearchResults({ query }: { query: string }) {
   const drillInto = useStore((s) => s.drillInto)
   const q = query.toLowerCase()
 
-  const pool: Teaching[] = useMemo(() => [...REGIONS, ...EYE_STRUCTURES, ...CONCEPTS], [])
+  const pool: Teaching[] = useMemo(
+    () => [...REGIONS, ...EYE_STRUCTURES, ...EAR_STRUCTURES, ...CONCEPTS],
+    [],
+  )
   const results = pool
     .filter(
       (t) =>
@@ -146,6 +155,14 @@ export function Sidebar() {
                     </p>
                     {EYE_STRUCTURES.filter((e) => !e.parentId).map((e) => (
                       <TreeRow key={e.id} item={e} depth={0} color={SYSTEMS.eye.hex} />
+                    ))}
+                  </div>
+                  <div className="mb-2">
+                    <p className="mb-0.5 px-2 text-[11px] font-semibold uppercase tracking-wider" style={{ color: EAR_COLOR }}>
+                      The Ear
+                    </p>
+                    {EAR_STRUCTURES.filter((e) => !e.parentId).map((e) => (
+                      <TreeRow key={e.id} item={e} depth={0} color={EAR_COLOR} />
                     ))}
                   </div>
                   <div className="mb-2">

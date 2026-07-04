@@ -26,13 +26,23 @@ function visibleRegionIds(viewLevel: number, selectedId: string | null): string[
   return [...ids]
 }
 
+// During a scenario, show every structure with geometry (down to L2) so the
+// animation can light up deep regions like the amygdala or hippocampus. The
+// dimming of everything-but-the-active-region keeps it readable.
+function scenarioRegionIds(): string[] {
+  return REGIONS.filter(
+    (r) => r.kind === 'anatomical' && hasGeometry(r.id) && r.detailLevel <= 2,
+  ).map((r) => r.id)
+}
+
 export function Brain() {
   const viewLevel = useStore((s) => s.viewLevel)
   const selectedId = useStore((s) => s.selectedId)
+  const scenarioActive = useStore((s) => s.scenarioActive)
 
   const ids = useMemo(
-    () => visibleRegionIds(viewLevel, selectedId),
-    [viewLevel, selectedId],
+    () => (scenarioActive ? scenarioRegionIds() : visibleRegionIds(viewLevel, selectedId)),
+    [scenarioActive, viewLevel, selectedId],
   )
 
   return (

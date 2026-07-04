@@ -1,3 +1,4 @@
+import { useEffect, useRef } from 'react'
 import { useStore } from './store'
 import { Scene } from './scene/Scene'
 import { NoWebGLFallback } from './components/NoWebGLFallback'
@@ -7,6 +8,7 @@ import { Breadcrumb } from './components/Breadcrumb'
 import { ConceptBrowser } from './components/ConceptBrowser'
 import { QuizModal } from './components/QuizModal'
 import { ViewSwitcher } from './components/ViewSwitcher'
+import { ScenarioPlayer } from './components/ScenarioPlayer'
 import { Credits } from './components/Credits'
 
 function IconButton({
@@ -44,6 +46,30 @@ export default function App() {
   const toggleLiteMode = useStore((s) => s.toggleLiteMode)
   const resetView = useStore((s) => s.resetView)
   const setCreditsOpen = useStore((s) => s.setCreditsOpen)
+  const view = useStore((s) => s.view)
+  const brainSkin = useStore((s) => s.brainSkin)
+  const toggleBrainSkin = useStore((s) => s.toggleBrainSkin)
+  const setBrainSkin = useStore((s) => s.setBrainSkin)
+  const scenariosOpen = useStore((s) => s.scenariosOpen)
+  const openScenarios = useStore((s) => s.openScenarios)
+  const closeScenarios = useStore((s) => s.closeScenarios)
+
+  // Intro: the brain opens with the realistic skin on, then it fades off after a
+  // few seconds to reveal the interactive wireframe. Cancelled if the user
+  // touches the toggle first, so we never override a deliberate choice.
+  const introTimer = useRef<ReturnType<typeof setTimeout>>()
+  const cancelIntro = () => {
+    if (introTimer.current) {
+      clearTimeout(introTimer.current)
+      introTimer.current = undefined
+    }
+  }
+  useEffect(() => {
+    introTimer.current = setTimeout(() => setBrainSkin(false), 3200)
+    return cancelIntro
+    // Run once on mount; setBrainSkin is stable.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   if (!webglOk) return <NoWebGLFallback />
 
@@ -74,6 +100,38 @@ export default function App() {
         </div>
 
         <div className="pointer-events-auto flex items-center gap-2">
+          {view === 'brain' && (
+            <IconButton
+              label={scenariosOpen ? 'Close brain activity' : 'Brain activity scenarios'}
+              active={scenariosOpen}
+              onClick={() => {
+                cancelIntro()
+                scenariosOpen ? closeScenarios() : openScenarios()
+              }}
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M3 12h4l2.5-7 4 14 2.5-7H21" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            </IconButton>
+          )}
+          {view === 'brain' && (
+            <IconButton
+              label={brainSkin ? 'Hide realistic brain' : 'Show realistic brain'}
+              active={brainSkin}
+              onClick={() => {
+                cancelIntro()
+                toggleBrainSkin()
+              }}
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path
+                  d="M9 3a4 4 0 0 0-3.9 5A3.5 3.5 0 0 0 5 15a3.5 3.5 0 0 0 4 3 3 3 0 0 0 3-1 3 3 0 0 0 3 1 3.5 3.5 0 0 0 4-3 3.5 3.5 0 0 0-.1-7A4 4 0 0 0 15 3a3 3 0 0 0-3 1 3 3 0 0 0-3-1z"
+                  strokeLinejoin="round"
+                />
+                <path d="M12 4v14" strokeLinecap="round" />
+              </svg>
+            </IconButton>
+          )}
           {liteMode && (
             <span className="hidden rounded-full border border-amber-400/30 bg-amber-400/10 px-2.5 py-1 text-xs text-amber-200 sm:inline">
               Lite mode
@@ -102,7 +160,9 @@ export default function App() {
       <Breadcrumb />
       <Sidebar />
       <InfoPanel />
-      <ViewSwitcher />
+      {/* The scenario player occupies the bottom-center slot; hide the switcher then. */}
+      {!scenariosOpen && <ViewSwitcher />}
+      <ScenarioPlayer />
       <ConceptBrowser />
       <QuizModal />
       <Credits />

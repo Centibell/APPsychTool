@@ -97,6 +97,15 @@ export interface EyeStructure extends Teaching {
   jumpToRegionId?: string
 }
 
+/** A selectable structure in the 3D ear scene (audition + pitch theories). */
+export interface EarStructure extends Teaching {
+  detailLevel: DetailLevel
+  parentId?: string
+  childIds?: string[]
+  /** If set, "auditory-nerve" → jumps the camera to this brain region id. */
+  jumpToRegionId?: string
+}
+
 /**
  * Non-anatomical AP content (research methods, social psych, personality,
  * developmental theories, most disorders). No geometry — surfaced through the

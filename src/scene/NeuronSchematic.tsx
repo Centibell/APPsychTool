@@ -26,6 +26,9 @@ const DENDRITES: { rot: [number, number, number]; len: number }[] = [
   { rot: [0, 0.6, Math.PI / 2 - 0.1], len: 0.9 },
 ]
 
+// The nodes of Ranvier sit in the gaps between myelin segments.
+const NODE_X = [-1.05, -0.15, 0.75, 1.65]
+
 function AxonPulse() {
   const reducedMotion = useStore((s) => s.reducedMotion)
   const ref = useRef<THREE.Mesh>(null)
@@ -35,8 +38,12 @@ function AxonPulse() {
       ref.current.position.x = (AXON_X0 + AXON_X1) / 2
       return
     }
+    // Saltatory conduction: the pulse jumps from node to node rather than
+    // gliding continuously, mirroring how myelinated axons actually conduct.
     const t = (state.clock.getElapsedTime() % 1.8) / 1.8
-    ref.current.position.x = AXON_X0 + t * (AXON_X1 - AXON_X0)
+    const stops = [AXON_X0, ...NODE_X, AXON_X1]
+    const idx = Math.min(stops.length - 1, Math.floor(t * (stops.length - 1)))
+    ref.current.position.x = stops[idx]
     const m = ref.current.material as THREE.MeshBasicMaterial
     m.opacity = Math.sin(t * Math.PI) // fade in/out along the trip
   })
@@ -56,6 +63,7 @@ export function NeuronSchematic() {
     [],
   )
   const myelin = useMemo(() => new THREE.CylinderGeometry(0.22, 0.22, 0.62, 8), [])
+  const node = useMemo(() => new THREE.CylinderGeometry(0.09, 0.09, 0.14, 8), [])
   const terminal = useMemo(() => new THREE.IcosahedronGeometry(0.2, 1), [])
 
   const myelinX = [-0.55, 0.35, 1.25, 2.05]
@@ -68,8 +76,8 @@ export function NeuronSchematic() {
 
   return (
     <group>
-      {/* Soma */}
-      <HoloPart id="neuron" color={BODY} geometry={soma} position={[-2, 0, 0]} />
+      {/* Cell body (soma) */}
+      <HoloPart id="cell-body" color={BODY} geometry={soma} position={[-2, 0, 0]} />
 
       {/* Dendrites — each stretched to length and butted against the soma. */}
       {DENDRITES.map((d, i) => {
@@ -78,7 +86,7 @@ export function NeuronSchematic() {
         return (
           <HoloPart
             key={i}
-            id="neuron"
+            id="dendrites"
             color={BODY}
             geometry={dendrite}
             position={[c.x, c.y, c.z]}
@@ -100,9 +108,20 @@ export function NeuronSchematic() {
       {myelinX.map((x) => (
         <HoloPart
           key={x}
-          id="action-potential"
+          id="myelin-sheath"
           color={AXON}
           geometry={myelin}
+          position={[x, 0, 0]}
+          rotation={[0, 0, Math.PI / 2]}
+        />
+      ))}
+      {/* Nodes of Ranvier — the exposed gaps between myelin segments */}
+      {NODE_X.map((x) => (
+        <HoloPart
+          key={x}
+          id="nodes-of-ranvier"
+          color={PULSE}
+          geometry={node}
           position={[x, 0, 0]}
           rotation={[0, 0, Math.PI / 2]}
         />
@@ -112,7 +131,7 @@ export function NeuronSchematic() {
 
       {/* Terminal buttons */}
       {terminals.map((p, i) => (
-        <HoloPart key={i} id="synapse" color={PULSE} geometry={terminal} position={p} />
+        <HoloPart key={i} id="axon-terminals" color={PULSE} geometry={terminal} position={p} />
       ))}
     </group>
   )

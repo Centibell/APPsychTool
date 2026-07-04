@@ -7,6 +7,12 @@ import { ensureEngine, generateBatch, isEngineReady } from '../ai/engine'
 
 type Phase = 'checking' | 'unsupported' | 'idle' | 'consent' | 'loading' | 'generating' | 'ready' | 'error'
 
+// Feature flag: on-device AI question generation is turned off until it has
+// been validated across a range of consumer GPUs. The whole pipeline below
+// (WebGPU gate → model download → grounded generation → fallback) stays intact;
+// flip this back to `true` to re-enable once live inference has been tested.
+const AI_QUIZ_ENABLED = false
+
 interface Props {
   item: Teaching
   apUnit: number
@@ -14,6 +20,31 @@ interface Props {
 }
 
 export function AiQuizControls({ item, apUnit, onGenerated }: Props) {
+  // Disabled state: show a grayed-out, non-interactive control with a note so
+  // students know the feature exists but isn't ready, and steer them to the
+  // vetted bank (which works everywhere).
+  if (!AI_QUIZ_ENABLED) {
+    return (
+      <div className="mt-4">
+        <button
+          type="button"
+          disabled
+          aria-disabled="true"
+          className="w-full cursor-not-allowed rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-sm font-medium text-slate-500"
+        >
+          ✨ Generate practice with on-device AI
+        </button>
+        <p className="mt-2 text-xs leading-relaxed text-slate-500">
+          On-device AI practice is turned off for now — it hasn’t been tested on
+          most devices yet. The vetted question bank above works everywhere.
+        </p>
+      </div>
+    )
+  }
+  return <AiQuizControlsActive item={item} apUnit={apUnit} onGenerated={onGenerated} />
+}
+
+function AiQuizControlsActive({ item, apUnit, onGenerated }: Props) {
   const [phase, setPhase] = useState<Phase>('checking')
   const [reason, setReason] = useState<string>()
   const [progress, setProgress] = useState(0)

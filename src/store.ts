@@ -11,7 +11,7 @@ const caps = detectCapabilities()
 export type FocusMode = 'brain' | 'eye'
 
 /** Which 3D sub-scene is on stage. Driven automatically by selection. */
-export type SceneView = 'brain' | 'eye' | 'cell'
+export type SceneView = 'brain' | 'eye' | 'cell' | 'ear'
 
 /** A fly-to request the camera rig consumes, then clears. */
 export interface FocusTarget {
@@ -24,6 +24,7 @@ export interface FocusTarget {
 function viewForId(id: string): SceneView | undefined {
   const kind = kindOf(id)
   if (kind === 'eye') return 'eye'
+  if (kind === 'ear') return 'ear'
   if (kind === 'region') {
     return getRegion(id)?.kind === 'schematic' ? 'cell' : 'brain'
   }
@@ -55,6 +56,19 @@ interface AppState {
   conceptsOpen: boolean
   creditsOpen: boolean
 
+  /** Show the realistic anatomical skin over the wireframe brain. */
+  brainSkin: boolean
+  /** True while the skin is fully opaque (covering) — the wireframe hides then. */
+  skinOpaque: boolean
+
+  // ── Brain-activity scenarios ──
+  /** The scenario launcher / player panel is open. */
+  scenariosOpen: boolean
+  /** A scenario is running: dim every structure except the highlighted one. */
+  scenarioActive: boolean
+  /** The region currently lit up by the active scenario step. */
+  highlightId: string | null
+
   // ── actions ──
   setHovered: (id: string | null) => void
   select: (id: string | null) => void
@@ -70,6 +84,14 @@ interface AppState {
   setQuizOpen: (open: boolean) => void
   setConceptsOpen: (open: boolean) => void
   setCreditsOpen: (open: boolean) => void
+  toggleBrainSkin: () => void
+  setBrainSkin: (on: boolean) => void
+  setSkinOpaque: (on: boolean) => void
+  openScenarios: () => void
+  closeScenarios: () => void
+  stopScenario: () => void
+  beginScenario: () => void
+  setHighlight: (id: string | null) => void
 }
 
 let focusToken = 0
@@ -93,6 +115,15 @@ export const useStore = create<AppState>((set, get) => ({
   quizOpen: false,
   conceptsOpen: false,
   creditsOpen: false,
+
+  // On by default so the page opens on a recognizable brain; App auto-fades it
+  // off a few seconds after load to reveal the interactive wireframe.
+  brainSkin: true,
+  skinOpaque: false,
+
+  scenariosOpen: false,
+  scenarioActive: false,
+  highlightId: null,
 
   setHovered: (id) => set({ hoveredId: id }),
 
@@ -146,7 +177,8 @@ export const useStore = create<AppState>((set, get) => ({
 
   setView: (view) => {
     // Switching sub-scene clears selection and seeds a sensible default focus.
-    const seed = view === 'cell' ? 'neuron' : view === 'eye' ? 'eye-retina' : null
+    const seed =
+      view === 'cell' ? 'neuron' : view === 'eye' ? 'eye-retina' : view === 'ear' ? 'ear-cochlea' : null
     set({
       view,
       selectedId: null,
@@ -171,4 +203,31 @@ export const useStore = create<AppState>((set, get) => ({
   setQuizOpen: (open) => set({ quizOpen: open }),
   setConceptsOpen: (open) => set({ conceptsOpen: open }),
   setCreditsOpen: (open) => set({ creditsOpen: open }),
+  toggleBrainSkin: () => set((s) => ({ brainSkin: !s.brainSkin })),
+  setBrainSkin: (on) => set({ brainSkin: on }),
+  setSkinOpaque: (on) => set((s) => (s.skinOpaque === on ? s : { skinOpaque: on })),
+
+  openScenarios: () => set({ scenariosOpen: true }),
+  closeScenarios: () => {
+    get().stopScenario()
+    set({ scenariosOpen: false })
+  },
+  stopScenario: () => {
+    set({ scenarioActive: false, highlightId: null })
+    get().resetView()
+  },
+  // Enter guided-animation mode: reveal the wireframe, clear any selection, and
+  // frame the whole brain at a level that shows the deeper structures too.
+  beginScenario: () =>
+    set({
+      scenarioActive: true,
+      brainSkin: false,
+      skinOpaque: false,
+      selectedId: null,
+      hoveredId: null,
+      view: 'brain',
+      viewLevel: 2,
+      focusTarget: { id: '__root__', token: ++focusToken },
+    }),
+  setHighlight: (id) => set({ highlightId: id }),
 }))
