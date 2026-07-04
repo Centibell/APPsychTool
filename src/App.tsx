@@ -1,6 +1,10 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, lazy, Suspense } from 'react'
 import { useStore } from './store'
 import { Scene } from './scene/Scene'
+
+// Hidden nextbot horror game — code-split so it (and its assets) only load when
+// unlocked by typing "chai".
+const NextbotGame = lazy(() => import('./games/NextbotGame'))
 import { NoWebGLFallback } from './components/NoWebGLFallback'
 import { Sidebar } from './components/Sidebar'
 import { InfoPanel } from './components/InfoPanel'
@@ -59,6 +63,8 @@ export default function App() {
   const openScenarios = useStore((s) => s.openScenarios)
   const closeScenarios = useStore((s) => s.closeScenarios)
   const setGameOpen = useStore((s) => s.setGameOpen)
+  const nextbotOpen = useStore((s) => s.nextbotOpen)
+  const setNextbotOpen = useStore((s) => s.setNextbotOpen)
 
   // Intro: the brain opens with the realistic skin on, then it fades off after a
   // few seconds to reveal the interactive wireframe. Cancelled if the user
@@ -95,6 +101,21 @@ export default function App() {
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [setGameOpen])
+
+  // Second easter egg: type "chai" (anywhere but a text field) to unlock the
+  // hidden nextbot horror game, which then lazy-loads.
+  useEffect(() => {
+    let buf = ''
+    const onKey = (e: KeyboardEvent) => {
+      const tag = (document.activeElement?.tagName || '').toLowerCase()
+      if (tag === 'input' || tag === 'textarea') return
+      if (e.key.length !== 1) return
+      buf = (buf + e.key.toLowerCase()).slice(-4)
+      if (buf === 'chai') setNextbotOpen(true)
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [setNextbotOpen])
 
   // Mobile/discoverable fallback: tap the title 5 times quickly.
   const titleTaps = useRef<number[]>([])
@@ -210,6 +231,12 @@ export default function App() {
       <SleepCycleDemo />
       <StroopGame />
       <Credits />
+
+      {nextbotOpen && (
+        <Suspense fallback={<div className="fixed inset-0 z-[60] grid place-items-center bg-black text-sm text-slate-500">Loading…</div>}>
+          <NextbotGame />
+        </Suspense>
+      )}
     </main>
   )
 }

@@ -61,6 +61,8 @@ interface AppState {
   sleepCycleOpen: boolean
   /** Hidden Stroop mini-game (Konami code / tap-the-title easter egg). */
   gameOpen: boolean
+  /** Hidden nextbot horror game (type "chai" to unlock). Lazy-loaded. */
+  nextbotOpen: boolean
 
   /** Show the realistic anatomical skin over the wireframe brain. */
   brainSkin: boolean
@@ -95,6 +97,7 @@ interface AppState {
   setDrugDemoOpen: (open: boolean) => void
   setSleepCycleOpen: (open: boolean) => void
   setGameOpen: (open: boolean) => void
+  setNextbotOpen: (open: boolean) => void
   toggleBrainSkin: () => void
   setBrainSkin: (on: boolean) => void
   setSkinOpaque: (on: boolean) => void
@@ -131,6 +134,7 @@ export const useStore = create<AppState>((set, get) => ({
   drugDemoOpen: false,
   sleepCycleOpen: false,
   gameOpen: false,
+  nextbotOpen: false,
 
   // On by default so the page opens on a recognizable brain; App auto-fades it
   // off a few seconds after load to reveal the interactive wireframe.
@@ -224,6 +228,7 @@ export const useStore = create<AppState>((set, get) => ({
   setDrugDemoOpen: (open) => set({ drugDemoOpen: open }),
   setSleepCycleOpen: (open) => set({ sleepCycleOpen: open }),
   setGameOpen: (open) => set({ gameOpen: open }),
+  setNextbotOpen: (open) => set({ nextbotOpen: open }),
   toggleBrainSkin: () => set((s) => ({ brainSkin: !s.brainSkin })),
   setBrainSkin: (on) => set({ brainSkin: on }),
   setSkinOpaque: (on) => set((s) => (s.skinOpaque === on ? s : { skinOpaque: on })),
