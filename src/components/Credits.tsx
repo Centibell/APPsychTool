@@ -1,8 +1,7 @@
 import { AnimatePresence, motion } from 'framer-motion'
 import { useStore } from '../store'
-import { DEFAULT_MODEL } from '../ai/models'
 
-// Credits, sources, and honesty notes (handoff §7/§8/§10).
+// About / how-it-works / sources.
 export function Credits() {
   const open = useStore((s) => s.creditsOpen)
   const setOpen = useStore((s) => s.setCreditsOpen)
@@ -40,10 +39,31 @@ export function Credits() {
 
             <div className="space-y-4 text-sm leading-relaxed text-slate-300">
               <p>
-                An interactive 3D brain and eye for learning <strong className="text-slate-100">AP Psychology</strong>,
-                mapped to the redesigned course (5 units + Science Practices). Everything runs in your browser — no
-                accounts, no servers.
+                Neuromap is an interactive 3D study guide for{' '}
+                <strong className="text-slate-100">AP Psychology</strong>. Orbit, zoom, and click your way through the
+                brain, the neuron and synapse, the eye, and the ear to learn the biological bases of behavior — mapped
+                to the redesigned AP course (5 units + Science Practices).
               </p>
+
+              <div>
+                <p className="mb-1 text-xs font-semibold uppercase tracking-wider text-neural-300">How to use it</p>
+                <p>
+                  Click any structure — in the 3D scene or the list on the left — to read what it does, how it ties to
+                  the AP units, common misconceptions, and exam tips. Drill into sub-structures, play the guided
+                  “brain activity” scenarios that light up regions step by step, or practice with the built-in
+                  question bank.
+                </p>
+              </div>
+
+              <div>
+                <p className="mb-1 text-xs font-semibold uppercase tracking-wider text-neural-300">How it works</p>
+                <p>
+                  It’s a single web page that runs entirely in your browser — no accounts, no servers, nothing to
+                  install. The brain, neuron, synapse, eye, and ear aren’t downloaded models; they’re all generated
+                  procedurally in code and drawn as a live 3D scene with WebGL. The whole thing is data-driven: each
+                  structure’s teaching text lives in one place, and both the 3D scene and the panels read from it.
+                </p>
+              </div>
 
               <div>
                 <p className="mb-1 text-xs font-semibold uppercase tracking-wider text-neural-300">A note on accuracy</p>
@@ -51,24 +71,13 @@ export function Credits() {
                   Anatomy and AP definitions follow the College Board Course &amp; Exam Description and a
                   college-level intro-psychology textbook. Where the AP course simplifies the science (e.g. “the
                   amygdala is the fear center”), it’s presented at AP level, not as absolute neuroscience.
-                  <strong className="text-amber-200"> AI-generated questions can still contain errors — verify them against your notes.</strong>
-                </p>
-              </div>
-
-              <div>
-                <p className="mb-1 text-xs font-semibold uppercase tracking-wider text-neural-300">3D & on-device AI</p>
-                <p>
-                  The brain, neuron, synapse, and eye are generated procedurally in code — no third-party anatomical
-                  assets. Optional practice questions are written on your own GPU by {DEFAULT_MODEL.label} via WebLLM
-                  (WebGPU); the model downloads once and is cached for offline use. It never contacts a server.
                 </p>
               </div>
 
               <div>
                 <p className="mb-1 text-xs font-semibold uppercase tracking-wider text-neural-300">Built with</p>
                 <p className="text-slate-400">
-                  React · Three.js · React-Three-Fiber &amp; drei · Zustand · Tailwind CSS · Framer Motion · Vite ·
-                  @mlc-ai/web-llm. Model weights are subject to their respective licenses (Qwen / Llama).
+                  React · Three.js · React-Three-Fiber &amp; drei · Zustand · Tailwind CSS · Framer Motion · Vite.
                 </p>
               </div>
 

@@ -77,9 +77,9 @@ export const CONCEPTS: ConceptCard[] = [
     functionShort:
       'Acetylcholine enables muscle contraction and plays a key role in learning and memory. Its loss is linked to Alzheimer’s disease.',
     functionDeep:
-      'ACh is released at every junction between motor neurons and muscles, making movement possible. In the brain it supports memory; the degeneration of ACh-producing neurons is a hallmark of Alzheimer’s disease.',
+      'ACh is released at every junction between motor neurons and muscles, enabling voluntary movement through the somatic nervous system; it also acts in the parasympathetic nervous system to calm the body (for example, slowing the heart). In the brain it supports memory; the degeneration of ACh-producing neurons is a hallmark of Alzheimer’s disease.',
     apUnits: [1, 2, 5],
-    apTerms: ['acetylcholine', "Alzheimer's disease", 'memory'],
+    apTerms: ['acetylcholine', "Alzheimer's disease", 'memory', 'somatic nervous system', 'parasympathetic nervous system'],
     relatedIds: ['synapse', 'hippocampus', 'motor-cortex'],
     examTips: ['ACh: muscles + memory. Loss ↔ Alzheimer’s.'],
   },
@@ -92,9 +92,9 @@ export const CONCEPTS: ConceptCard[] = [
     functionShort:
       'Norepinephrine controls alertness and arousal and helps drive the fight-or-flight response. Low levels can depress mood.',
     functionDeep:
-      'As both a neurotransmitter and a stress hormone, norepinephrine raises heart rate and readies the body for action. Undersupply is associated with depressed mood and low energy.',
+      'As both a neurotransmitter and a stress hormone, norepinephrine raises heart rate and readies the body for action, driving the sympathetic nervous system’s fight-or-flight arousal. Undersupply is associated with depressed mood and low energy.',
     apUnits: [1, 5],
-    apTerms: ['norepinephrine', 'arousal', 'fight-or-flight'],
+    apTerms: ['norepinephrine', 'arousal', 'fight-or-flight', 'sympathetic nervous system'],
     relatedIds: ['synapse', 'amygdala', 'hypothalamus'],
   },
   {
@@ -114,6 +114,30 @@ export const CONCEPTS: ConceptCard[] = [
   },
 
   // ── Neural communication (Unit 1) ────────────────────────────────────────
+  {
+    id: 'concept-nervous-system',
+    topic: 'Neural Communication',
+    displayName: 'Nervous System Organization',
+    oneLiner: 'CNS + PNS, split into somatic and autonomic (sympathetic vs. parasympathetic).',
+    functionShort:
+      'The nervous system divides into the central nervous system (brain + spinal cord) and the peripheral nervous system, which splits into the somatic (voluntary) and autonomic (involuntary) systems.',
+    functionDeep:
+      'The autonomic nervous system splits further into the sympathetic branch (fight-or-flight, which arouses the body) and the parasympathetic branch (rest-and-digest, which calms it back down). Together these branches keep the body in balance. Use the “Nervous system map” button in the sidebar to see the full breakdown as a diagram.',
+    apUnits: [1],
+    apTerms: [
+      'central nervous system',
+      'peripheral nervous system',
+      'somatic nervous system',
+      'autonomic nervous system',
+      'sympathetic nervous system',
+      'parasympathetic nervous system',
+    ],
+    relatedIds: ['concept-neuron-types', 'neuron', 'hypothalamus'],
+    examTips: [
+      'Sympathetic = fight-or-flight (arouses); parasympathetic = rest-and-digest (calms). Somatic = voluntary; autonomic = involuntary.',
+    ],
+    mnemonic: 'ParaSympathetic = Peaceful/Pause; Sympathetic = Stress/Sprint.',
+  },
   {
     id: 'concept-neuron-types',
     topic: 'Neural Communication',

@@ -56,9 +56,9 @@ export const REGIONS: Region[] = [
     functionShort:
       'A strip at the rear of the frontal lobe that controls voluntary movement, with each side controlling the opposite side of the body.',
     functionDeep:
-      'Runs along the precentral gyrus. Areas needing fine control (hands, face) get disproportionate space — the "motor homunculus." It sits directly across the central sulcus from the somatosensory cortex.',
+      'Runs along the precentral gyrus. Areas needing fine control (hands, face) get disproportionate space — the "motor homunculus." Its commands travel out through the somatic nervous system, which controls voluntary skeletal muscles. It sits directly across the central sulcus from the somatosensory cortex.',
     apUnits: [1],
-    apTerms: ['motor cortex', 'contralateral control'],
+    apTerms: ['motor cortex', 'contralateral control', 'somatic nervous system'],
     relatedIds: ['somatosensory-cortex', 'frontal-lobe', 'cerebellum'],
     examTips: ['Often paired/contrasted with the somatosensory cortex (movement OUT vs. touch IN).'],
   },
@@ -290,9 +290,9 @@ export const REGIONS: Region[] = [
     functionShort:
       'The amygdala processes strong emotions, particularly fear and aggression, and tags memories with emotional significance.',
     functionDeep:
-      'Two almond-shaped clusters that trigger rapid emotional and fight-or-flight responses, working with the hypothalamus. AP courses often call it the "fear center," but that is a simplification — it responds to many emotionally significant stimuli, not fear alone.',
+      'Two almond-shaped clusters that trigger rapid emotional and fight-or-flight responses — arousing the sympathetic nervous system — while working with the hypothalamus. AP courses often call it the "fear center," but that is a simplification — it responds to many emotionally significant stimuli, not fear alone.',
     apUnits: [1, 2, 5],
-    apTerms: ['amygdala', 'fight-or-flight', 'emotion'],
+    apTerms: ['amygdala', 'fight-or-flight', 'emotion', 'sympathetic nervous system'],
     relatedIds: ['hippocampus', 'hypothalamus', 'prefrontal-cortex'],
     misconceptions: ['Calling the amygdala simply the "fear center" is an AP-level simplification — it handles emotional salience broadly.'],
     examTips: ['Amygdala = emotion/fear; links to anxiety disorders (Unit 5) and emotional memory (Unit 2).'],
@@ -345,9 +345,9 @@ export const REGIONS: Region[] = [
     functionShort:
       'The hypothalamus regulates hunger, thirst, body temperature, and sexual behavior, and controls the pituitary gland.',
     functionDeep:
-      'A small but powerful regulator that keeps the body in balance (homeostasis) and links the nervous and endocrine systems by directing the pituitary gland. It also contains reward centers and helps trigger the fight-or-flight response.',
+      'A small but powerful regulator that keeps the body in balance (homeostasis) and links the nervous and endocrine systems by directing the pituitary gland. It also contains reward centers and triggers the fight-or-flight response by activating the sympathetic branch of the autonomic nervous system.',
     apUnits: [1, 3],
-    apTerms: ['hypothalamus', 'homeostasis', 'endocrine system', 'pituitary gland'],
+    apTerms: ['hypothalamus', 'homeostasis', 'endocrine system', 'pituitary gland', 'autonomic nervous system', 'sympathetic nervous system'],
     relatedIds: ['pituitary', 'amygdala', 'thalamus'],
     examTips: ['Hypothalamus controls the 4 F’s: Feeding, Fighting, Fleeing, and... reproduction. It commands the pituitary.'],
     mnemonic: 'hypoTHALAMUS keeps the "thermostat" of the body steady.',
@@ -446,9 +446,9 @@ export const REGIONS: Region[] = [
     functionShort:
       'The medulla controls vital automatic functions — heartbeat, breathing, and blood pressure.',
     functionDeep:
-      'The base of the brainstem, just above the spinal cord. Because it governs breathing and heart rate, damage here is often fatal — no conscious effort keeps these functions running.',
+      'The base of the brainstem, just above the spinal cord. Because it governs the involuntary, autonomic functions of breathing and heart rate, damage here is often fatal — no conscious effort keeps these functions running.',
     apUnits: [1],
-    apTerms: ['medulla', 'brainstem'],
+    apTerms: ['medulla', 'brainstem', 'autonomic nervous system'],
     relatedIds: ['pons', 'brainstem'],
     mnemonic: 'MEDulla keeps you alive — think MEDical basics: heartbeat & breathing.',
   },

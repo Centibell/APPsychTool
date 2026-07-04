@@ -100,7 +100,7 @@ export function ScenarioPlayer() {
                     </svg>
                   </button>
                 </div>
-                <div className="grid gap-1.5">
+                <div className="scroll-slim grid max-h-[calc(100vh-9rem)] gap-1.5 overflow-y-auto pr-1">
                   {SCENARIOS.map((s) => (
                     <button
                       key={s.id}

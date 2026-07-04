@@ -98,6 +98,7 @@ function SearchResults({ query }: { query: string }) {
 export function Sidebar() {
   const sidebarOpen = useStore((s) => s.sidebarOpen)
   const setConceptsOpen = useStore((s) => s.setConceptsOpen)
+  const setNervousSystemOpen = useStore((s) => s.setNervousSystemOpen)
   const [query, setQuery] = useState('')
 
   // Root regions grouped by system, in a sensible reading order.
@@ -173,6 +174,12 @@ export function Sidebar() {
                       <TreeRow item={getRegion('neuron')!} depth={0} color={SYSTEMS.cellular.hex} />
                     )}
                   </div>
+                  <button
+                    onClick={() => setNervousSystemOpen(true)}
+                    className="mt-1 w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-left text-sm text-slate-200 transition-colors hover:bg-white/10"
+                  >
+                    Nervous system map →
+                  </button>
                   <button
                     onClick={() => setConceptsOpen(true)}
                     className="mt-1 w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-left text-sm text-slate-200 transition-colors hover:bg-white/10"

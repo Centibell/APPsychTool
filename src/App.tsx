@@ -9,6 +9,7 @@ import { ConceptBrowser } from './components/ConceptBrowser'
 import { QuizModal } from './components/QuizModal'
 import { ViewSwitcher } from './components/ViewSwitcher'
 import { ScenarioPlayer } from './components/ScenarioPlayer'
+import { NervousSystemDiagram } from './components/NervousSystemDiagram'
 import { Credits } from './components/Credits'
 
 function IconButton({
@@ -165,6 +166,7 @@ export default function App() {
       <ScenarioPlayer />
       <ConceptBrowser />
       <QuizModal />
+      <NervousSystemDiagram />
       <Credits />
     </main>
   )

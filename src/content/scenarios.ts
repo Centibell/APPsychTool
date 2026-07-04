@@ -222,4 +222,65 @@ export const SCENARIOS: BrainScenario[] = [
       },
     ],
   },
+  {
+    id: 'mr-g-pen',
+    title: 'Mr. G Throws a Pen',
+    blurb: 'A wrong answer, an incoming pen, and positive punishment.',
+    icon: '🖊️',
+    steps: [
+      {
+        regionId: 'visual-cortex',
+        label: 'Visual Cortex',
+        text: 'You blurt out a wrong answer — and catch a pen flying toward you. Your visual cortex tracks the incoming projectile.',
+      },
+      {
+        regionId: 'amygdala',
+        label: 'Amygdala',
+        text: 'The amygdala sounds an instant threat alarm, before you’ve consciously processed what’s happening.',
+      },
+      {
+        regionId: 'motor-cortex',
+        label: 'Motor Cortex',
+        text: 'The motor cortex fires commands to your skeletal muscles through the somatic nervous system — you flinch and duck.',
+      },
+      {
+        regionId: 'cerebellum',
+        label: 'Cerebellum',
+        text: 'The cerebellum coordinates the dodge, keeping the sudden movement balanced and smooth.',
+      },
+      {
+        regionId: 'prefrontal-cortex',
+        label: 'Prefrontal Cortex',
+        text: 'Afterward, the prefrontal cortex ties the embarrassment to that wrong answer — a dose of positive punishment that makes you think twice next time.',
+      },
+    ],
+  },
+  {
+    id: 'conditioned-marker',
+    title: 'The Conditioned Marker',
+    blurb: 'Classical conditioning turns a marker into a fear trigger.',
+    icon: '🖍️',
+    steps: [
+      {
+        regionId: 'visual-cortex',
+        label: 'Visual Cortex',
+        text: 'Mr. G brings a marker toward your hand. Your visual cortex recognizes it — the very marker he uses to draw on students to demonstrate conditioning.',
+      },
+      {
+        regionId: 'hippocampus',
+        label: 'Hippocampus',
+        text: 'The hippocampus retrieves the memory of that cold squeak across your skin — the learned pairing of marker (neutral stimulus) with being drawn on (the aversive event).',
+      },
+      {
+        regionId: 'amygdala',
+        label: 'Amygdala',
+        text: 'Trained by that repeated pairing, the amygdala fires a conditioned fear response: the marker has become a conditioned stimulus.',
+      },
+      {
+        regionId: 'hypothalamus',
+        label: 'Hypothalamus',
+        text: 'The hypothalamus triggers fight-or-flight through the sympathetic nervous system — your hand jerks back, heart pounding. That reflexive recoil is the conditioned response.',
+      },
+    ],
+  },
 ]
