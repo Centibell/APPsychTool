@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import * as THREE from 'three'
 import { useStore } from '../store'
 import { makeFaceTexture } from './face'
+import { GameAudio } from './audio'
 
 // ─────────────────────────────────────────────────────────────────────────
 //  Hidden nextbot horror game. You are Mr. G's chai latte, lost in a dim
@@ -36,12 +37,12 @@ const CELL = 3.4
 const WALL_H = 3.2
 const EYE = 1.6
 
-// Everything is fast now — this is a panic sprint, not a stroll.
-const WALK = 4.9
-const RUN = 8.4
-const BOT_SPEED = 9.6 // faster than a run in a straight line…
-const BOT_TURN = 3.1 // …but limited turn rate, and it bleeds speed while turning
-const CATCH_DIST = 1.4
+// Everything is FAST now — this is a flat-out panic sprint, not a stroll.
+const WALK = 6.6
+const RUN = 12.2
+const BOT_SPEED = 13.2 // only a hair quicker than a full sprint in a straight line…
+const BOT_TURN = 3.5 // …but a limited turn rate, and it bleeds speed while turning
+const CATCH_DIST = 1.5
 const HALL_PASSES = 5
 
 // AI tuning
@@ -82,6 +83,26 @@ const key = (x: number, y: number) => y * COLS + x
 const cellCenter = (gx: number, gy: number) =>
   new THREE.Vector3(gx * CELL + CELL / 2, 0, gy * CELL + CELL / 2)
 const rand = ([a, b]: [number, number]) => a + Math.random() * (b - a)
+
+// Soft gradient for the fake "volumetric" flashlight cone — bright toward the
+// lens, fading out down the beam so the cone has no hard cap. One tiny texture,
+// additively blended: gives dusty-beam mood with zero raymarching cost.
+function makeBeamTexture(): THREE.Texture {
+  const c = document.createElement('canvas')
+  c.width = 4
+  c.height = 64
+  const x = c.getContext('2d')!
+  const g = x.createLinearGradient(0, 0, 0, 64)
+  g.addColorStop(0, 'rgba(255,255,255,0)')
+  g.addColorStop(0.4, 'rgba(255,255,255,0.55)')
+  g.addColorStop(0.82, 'rgba(255,255,255,0.95)')
+  g.addColorStop(1, 'rgba(255,255,255,0)')
+  x.fillStyle = g
+  x.fillRect(0, 0, 4, 64)
+  const t = new THREE.CanvasTexture(c)
+  t.colorSpace = THREE.SRGBColorSpace
+  return t
+}
 
 // ── Rooms-and-mazes level generator ─────────────────────────────────────────
 function genMap(seed: number) {
@@ -326,8 +347,10 @@ export default function NextbotGame() {
     mount.appendChild(renderer.domElement)
 
     const scene = new THREE.Scene()
-    scene.background = new THREE.Color('#05060a')
-    scene.fog = new THREE.Fog('#05060a', 2.5, 17)
+    scene.background = new THREE.Color('#04050a')
+    // Exponential fog reads moodier than linear and costs the same — it swallows
+    // the low-poly geometry into darkness a few cells out.
+    scene.fog = new THREE.FogExp2('#04050a', 0.082)
 
     const camera = new THREE.PerspectiveCamera(74, mount.clientWidth / mount.clientHeight, 0.1, 60)
     const start = cellCenter(startCell[0], startCell[1])
@@ -336,8 +359,16 @@ export default function NextbotGame() {
     scene.add(camera)
 
     // ── Lights ──
-    scene.add(new THREE.AmbientLight('#20263a', 1.1))
-    const flashlight = new THREE.SpotLight('#ffe9c4', 4.4, 26, 0.6, 0.45, 1.05)
+    //   Weak-Chromebook budget: ONE dynamic light (the flashlight spot) + a low
+    //   ambient fill so unlit surfaces aren't pure black. No shadow maps. Moody
+    //   contrast comes from a cool ambient vs. a warm flashlight, exponential
+    //   fog, a flicker, and a fake additive light-cone — all essentially free.
+    scene.add(new THREE.AmbientLight('#161d30', 0.9))
+    // A dim cool "moonlight" fill from above gives silhouettes without a second
+    // dynamic light (HemisphereLight is cheaper than a directional + shadows).
+    scene.add(new THREE.HemisphereLight('#243049', '#05060c', 0.5))
+    const FLASH_BASE = 5.2
+    const flashlight = new THREE.SpotLight('#ffe6b8', FLASH_BASE, 30, 0.62, 0.5, 1.1)
     flashlight.position.set(0, 0, 0.2)
     camera.add(flashlight)
     const flashTarget = new THREE.Object3D()
@@ -345,17 +376,37 @@ export default function NextbotGame() {
     camera.add(flashTarget)
     flashlight.target = flashTarget
 
+    // Fake volumetric beam: an additive, soft-gradient cone riding the camera.
+    const beamTex = makeBeamTexture()
+    const beamMat = new THREE.MeshBasicMaterial({
+      map: beamTex,
+      color: '#ffe4b0',
+      transparent: true,
+      opacity: 0.09,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+      side: THREE.DoubleSide,
+      fog: true,
+    })
+    const BEAM_LEN = 13
+    const beam = new THREE.Mesh(new THREE.ConeGeometry(2.2, BEAM_LEN, 20, 1, true), beamMat)
+    beam.rotation.x = Math.PI / 2 // wide end forward, narrow end at the lens
+    beam.position.set(0, -0.05, -BEAM_LEN / 2 + 0.2)
+    camera.add(beam)
+
     // ── Floor + ceiling ──
+    // Lambert (cheap diffuse) instead of Standard/PBR everywhere — invisible
+    // difference in this gloom, far lighter on weak integrated GPUs.
     const floor = new THREE.Mesh(
       new THREE.PlaneGeometry(COLS * CELL, ROWS * CELL),
-      new THREE.MeshStandardMaterial({ color: '#0b0d14', roughness: 1, metalness: 0 }),
+      new THREE.MeshLambertMaterial({ color: '#0b0d14' }),
     )
     floor.rotation.x = -Math.PI / 2
     floor.position.set((COLS * CELL) / 2, 0, (ROWS * CELL) / 2)
     scene.add(floor)
     const ceil = new THREE.Mesh(
       new THREE.PlaneGeometry(COLS * CELL, ROWS * CELL),
-      new THREE.MeshStandardMaterial({ color: '#080a10', roughness: 1 }),
+      new THREE.MeshLambertMaterial({ color: '#080a10' }),
     )
     ceil.rotation.x = Math.PI / 2
     ceil.position.set((COLS * CELL) / 2, WALL_H, (ROWS * CELL) / 2)
@@ -365,7 +416,7 @@ export default function NextbotGame() {
     const wallCells: [number, number][] = []
     for (let y = 0; y < ROWS; y++)
       for (let x = 0; x < COLS; x++) if (maze[y][x] === 1) wallCells.push([x, y])
-    const wallMat = new THREE.MeshStandardMaterial({ color: '#161a26', roughness: 1, metalness: 0, flatShading: true })
+    const wallMat = new THREE.MeshLambertMaterial({ color: '#161a26', flatShading: true })
     const walls = new THREE.InstancedMesh(new THREE.BoxGeometry(CELL, WALL_H, CELL), wallMat, wallCells.length)
     const dummy = new THREE.Object3D()
     wallCells.forEach(([x, y], i) => {
@@ -376,11 +427,10 @@ export default function NextbotGame() {
     scene.add(walls)
 
     // ── Doors (powered) ──
-    const doorMat = new THREE.MeshStandardMaterial({
+    const doorMat = new THREE.MeshLambertMaterial({
       color: '#232838',
       emissive: '#0f3a3f',
       emissiveIntensity: 0.6,
-      roughness: 0.8,
       flatShading: true,
     })
     const plateMat = new THREE.MeshBasicMaterial({ color: '#0ea5b7', fog: true })
@@ -426,15 +476,19 @@ export default function NextbotGame() {
     scene.add(bot)
     let botHeading = 0
 
+    // ── Audio (driven by the bot's state; positional footsteps ride the bot) ──
+    const audio = new GameAudio(camera, bot)
+    let lungeArmed = true
+
     // ── Player "chai latte" viewmodel ──
     const cup = new THREE.Group()
     const cupBody = new THREE.Mesh(
       new THREE.CylinderGeometry(0.14, 0.11, 0.28, 12),
-      new THREE.MeshStandardMaterial({ color: '#e7d3b3', roughness: 0.9 }),
+      new THREE.MeshLambertMaterial({ color: '#e7d3b3' }),
     )
     const cupFoam = new THREE.Mesh(
       new THREE.CylinderGeometry(0.145, 0.145, 0.05, 12),
-      new THREE.MeshStandardMaterial({ color: '#fff7e8', emissive: '#3a3020', emissiveIntensity: 0.4 }),
+      new THREE.MeshLambertMaterial({ color: '#fff7e8', emissive: '#3a3020', emissiveIntensity: 0.4 }),
     )
     cupFoam.position.y = 0.16
     cup.add(cupBody, cupFoam)
@@ -587,11 +641,21 @@ export default function NextbotGame() {
 
     let ending = false
     const onLockChange = () => {
-      if (document.pointerLockElement === renderer.domElement) setPhase('playing')
-      else if (!ending && phaseRef.current === 'playing') setPhase('paused')
+      if (document.pointerLockElement === renderer.domElement) {
+        setPhase('playing')
+        audio.resume()
+      } else if (!ending && phaseRef.current === 'playing') {
+        setPhase('paused')
+        audio.suspend()
+      }
     }
     document.addEventListener('pointerlockchange', onLockChange)
-    startRef.current = () => renderer.domElement.requestPointerLock()
+    startRef.current = () => {
+      audio.resume()
+      audio.startLoop('ambient')
+      audio.startLoop('heartbeat') // loops silently; volume tracks danger
+      renderer.domElement.requestPointerLock()
+    }
 
     // ── AI state ──
     let botState: BotState = 'hunt'
@@ -607,11 +671,14 @@ export default function NextbotGame() {
       botState = 'stalk'
       stateT = 0
       vanishT = 0
+      audio.stopLoop('footsteps')
+      audio.play('stalk')
     }
     const enterReposition = () => {
       botState = 'reposition'
       stateT = 0
       repositionT = rand(REPOSITION_TIME)
+      audio.stopLoop('footsteps')
     }
 
     // ── Loop ──
@@ -671,6 +738,7 @@ export default function NextbotGame() {
         stateT += dt
 
         if (botState === 'hunt') {
+          audio.startLoop('footsteps') // idempotent; pans from the bot in 3D
           // BFS/LOS chase
           const pgx = Math.floor(camera.position.x / CELL)
           const pgy = Math.floor(camera.position.z / CELL)
@@ -692,6 +760,12 @@ export default function NextbotGame() {
           while (diff > Math.PI) diff -= 2 * Math.PI
           while (diff < -Math.PI) diff += 2 * Math.PI
           const lunging = losBot && distP < 3.8
+          if (lunging) {
+            if (lungeArmed) {
+              audio.play('lunge')
+              lungeArmed = false
+            }
+          } else lungeArmed = true
           const turnRate = losBot ? BOT_TURN * 2.4 : BOT_TURN
           if (lunging) botHeading = desired
           else botHeading += Math.max(-turnRate * dt, Math.min(turnRate * dt, diff))
@@ -715,6 +789,10 @@ export default function NextbotGame() {
           // Catch (only a solid, hunting bot bites)
           if (distP < CATCH_DIST && botMat.opacity > 0.6) {
             ending = true
+            audio.stopLoop('footsteps')
+            audio.stopLoop('heartbeat')
+            audio.stopLoop('ambient')
+            audio.play('catch')
             document.exitPointerLock()
             setPhase('caught')
           }
@@ -765,6 +843,7 @@ export default function NextbotGame() {
             setPasses(HALL_PASSES - passMeshes.length)
             if (passMeshes.length === 0) {
               ending = true
+              audio.stopAll()
               document.exitPointerLock()
               setPhase('won')
             }
@@ -785,7 +864,15 @@ export default function NextbotGame() {
         camera.rotation.y = yaw + nX * 0.02 * shakeAmt
         camera.rotation.x = pitch + nY * 0.02 * shakeAmt
         camera.rotation.z = nZ * 0.035 * shakeAmt
+
+        // Heartbeat swells as he closes in.
+        audio.setVolume('heartbeat', Math.min(0.95, shakeAmt * 1.1))
       }
+
+      // Flashlight flicker + beam pulse (cheap mood; runs even in menus).
+      const flick = 0.86 + 0.12 * Math.sin(t * 26) + 0.05 * Math.sin(t * 11.3)
+      flashlight.intensity = FLASH_BASE * flick
+      beamMat.opacity = 0.07 + 0.035 * flick + shakeAmt * 0.05
 
       if (grainRef.current) grainRef.current.style.opacity = (0.07 + shakeAmt * 0.3).toFixed(3)
       if (dangerRef.current) dangerRef.current.style.opacity = (shakeAmt * 0.55).toFixed(3)
@@ -809,8 +896,10 @@ export default function NextbotGame() {
       document.removeEventListener('pointerlockchange', onLockChange)
       window.removeEventListener('resize', onResize)
       if (document.pointerLockElement) document.exitPointerLock()
+      audio.dispose()
       renderer.dispose()
       faceTex.dispose()
+      beamTex.dispose()
       if (renderer.domElement.parentNode === mount) mount.removeChild(renderer.domElement)
     }
   }, [runId])
