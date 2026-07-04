@@ -66,6 +66,14 @@ const DOOR_COUNT = 2
 const DOOR_MIN_DIST_FROM_START = 9 // grid manhattan
 const DOOR_REACH = 2.6
 
+// Player-only shortcuts: punched-out gaps in select walls. The bot can't fit
+// (it still treats them as solid), but you can vault through with a running jump.
+const WINDOW_COUNT = 5
+const WINDOW_MIN_DETOUR = 8 // only punch a gap where it saves a real detour
+const WINDOW_SILL_H = 1.35 // solid sill you clear
+const WINDOW_LINTEL_Y = 2.75 // solid header above the hole
+const WINDOW_PASS_Y = 1.95 // camera height needed to be through the gap
+
 type Phase = 'menu' | 'playing' | 'paused' | 'caught' | 'won'
 type BotState = 'hunt' | 'stalk' | 'reposition'
 
@@ -83,26 +91,6 @@ const key = (x: number, y: number) => y * COLS + x
 const cellCenter = (gx: number, gy: number) =>
   new THREE.Vector3(gx * CELL + CELL / 2, 0, gy * CELL + CELL / 2)
 const rand = ([a, b]: [number, number]) => a + Math.random() * (b - a)
-
-// Soft gradient for the fake "volumetric" flashlight cone — bright toward the
-// lens, fading out down the beam so the cone has no hard cap. One tiny texture,
-// additively blended: gives dusty-beam mood with zero raymarching cost.
-function makeBeamTexture(): THREE.Texture {
-  const c = document.createElement('canvas')
-  c.width = 4
-  c.height = 64
-  const x = c.getContext('2d')!
-  const g = x.createLinearGradient(0, 0, 0, 64)
-  g.addColorStop(0, 'rgba(255,255,255,0)')
-  g.addColorStop(0.4, 'rgba(255,255,255,0.55)')
-  g.addColorStop(0.82, 'rgba(255,255,255,0.95)')
-  g.addColorStop(1, 'rgba(255,255,255,0)')
-  x.fillStyle = g
-  x.fillRect(0, 0, 4, 64)
-  const t = new THREE.CanvasTexture(c)
-  t.colorSpace = THREE.SRGBColorSpace
-  return t
-}
 
 // ── Rooms-and-mazes level generator ─────────────────────────────────────────
 function genMap(seed: number) {
@@ -340,6 +328,58 @@ export default function NextbotGame() {
         doorCells.push(cand)
     }
 
+    // ── Player-only "punch-out" gaps: pick wall cells that separate two open
+    //    cells which are otherwise a long walk apart, so vaulting through is a
+    //    real shortcut. The bot still can't fit (window cells stay solid to it).
+    const gridDist = (ax: number, ay: number, bx: number, by: number) => {
+      const dist = new Int16Array(COLS * ROWS).fill(-1)
+      dist[ay * COLS + ax] = 0
+      const q = [ax, ay]
+      for (let i = 0; i < q.length; i += 2) {
+        const x = q[i]
+        const y = q[i + 1]
+        const dc = dist[y * COLS + x]
+        if (x === bx && y === by) return dc
+        for (const [dx, dy] of [
+          [0, -1],
+          [0, 1],
+          [-1, 0],
+          [1, 0],
+        ]) {
+          const nx = x + dx
+          const ny = y + dy
+          if (nx < 0 || ny < 0 || nx >= COLS || ny >= ROWS || maze[ny][nx] === 1) continue
+          const ni = ny * COLS + nx
+          if (dist[ni] !== -1) continue
+          dist[ni] = dc + 1
+          q.push(nx, ny)
+        }
+      }
+      return -1
+    }
+    const windowCandidates: { x: number; y: number; gain: number }[] = []
+    for (let y = 1; y < ROWS - 1; y++)
+      for (let x = 1; x < COLS - 1; x++) {
+        if (maze[y][x] !== 1) continue
+        // A clean wall segment: open on two opposite sides, solid on the other two.
+        const horiz = maze[y][x - 1] === 0 && maze[y][x + 1] === 0 && maze[y - 1][x] === 1 && maze[y + 1][x] === 1
+        const vert = maze[y - 1][x] === 0 && maze[y + 1][x] === 0 && maze[y][x - 1] === 1 && maze[y][x + 1] === 1
+        if (!horiz && !vert) continue
+        const [ax, ay, bx, by] = horiz ? [x - 1, y, x + 1, y] : [x, y - 1, x, y + 1]
+        const d = gridDist(ax, ay, bx, by)
+        if (d >= WINDOW_MIN_DETOUR) windowCandidates.push({ x, y, gain: d })
+      }
+    windowCandidates.sort((a, b) => b.gain - a.gain)
+    const windowCells: [number, number][] = []
+    const windowSet = new Set<number>()
+    for (const c of windowCandidates) {
+      if (windowCells.length >= WINDOW_COUNT) break
+      if (windowCells.every(([wx, wy]) => Math.abs(wx - c.x) + Math.abs(wy - c.y) > 3)) {
+        windowCells.push([c.x, c.y])
+        windowSet.add(key(c.x, c.y))
+      }
+    }
+
     // ── Renderer / scene / camera ──
     const renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: 'high-performance' })
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.25))
@@ -359,40 +399,28 @@ export default function NextbotGame() {
     scene.add(camera)
 
     // ── Lights ──
-    //   Weak-Chromebook budget: ONE dynamic light (the flashlight spot) + a low
-    //   ambient fill so unlit surfaces aren't pure black. No shadow maps. Moody
-    //   contrast comes from a cool ambient vs. a warm flashlight, exponential
-    //   fog, a flicker, and a fake additive light-cone — all essentially free.
-    scene.add(new THREE.AmbientLight('#161d30', 0.9))
-    // A dim cool "moonlight" fill from above gives silhouettes without a second
-    // dynamic light (HemisphereLight is cheaper than a directional + shadows).
-    scene.add(new THREE.HemisphereLight('#243049', '#05060c', 0.5))
-    const FLASH_BASE = 5.2
-    const flashlight = new THREE.SpotLight('#ffe6b8', FLASH_BASE, 30, 0.62, 0.5, 1.1)
+    //   Weak-Chromebook budget: no shadow maps, a handful of cheap lights. The
+    //   world sits in near-darkness (low cool ambient + hemisphere fill) so the
+    //   real star — a bright, tight flashlight spot from the camera — carves a
+    //   crisp pool of illumination wherever you look. A small point light at the
+    //   lens gives a warm bubble around you so nearby geometry isn't pitch black.
+    scene.add(new THREE.AmbientLight('#0a0e18', 0.32))
+    scene.add(new THREE.HemisphereLight('#1a2436', '#04060c', 0.28))
+    // SpotLight(color, intensity, distance, angle, penumbra, decay). A fairly
+    // tight angle + modest penumbra = a defined bright circle, not a wash.
+    const FLASH_BASE = 11
+    const flashlight = new THREE.SpotLight('#fff1d4', FLASH_BASE, 36, 0.5, 0.28, 1.15)
     flashlight.position.set(0, 0, 0.2)
     camera.add(flashlight)
     const flashTarget = new THREE.Object3D()
     flashTarget.position.set(0, 0, -1)
     camera.add(flashTarget)
     flashlight.target = flashTarget
-
-    // Fake volumetric beam: an additive, soft-gradient cone riding the camera.
-    const beamTex = makeBeamTexture()
-    const beamMat = new THREE.MeshBasicMaterial({
-      map: beamTex,
-      color: '#ffe4b0',
-      transparent: true,
-      opacity: 0.09,
-      blending: THREE.AdditiveBlending,
-      depthWrite: false,
-      side: THREE.DoubleSide,
-      fog: true,
-    })
-    const BEAM_LEN = 13
-    const beam = new THREE.Mesh(new THREE.ConeGeometry(2.2, BEAM_LEN, 20, 1, true), beamMat)
-    beam.rotation.x = Math.PI / 2 // wide end forward, narrow end at the lens
-    beam.position.set(0, -0.05, -BEAM_LEN / 2 + 0.2)
-    camera.add(beam)
+    // Warm short-range fill riding the camera so your hands/cup and the walls
+    // right beside you read even outside the beam.
+    const lensGlow = new THREE.PointLight('#ffdca6', 2.4, 6, 1.6)
+    lensGlow.position.set(0, -0.05, 0.1)
+    camera.add(lensGlow)
 
     // ── Floor + ceiling ──
     // Lambert (cheap diffuse) instead of Standard/PBR everywhere — invisible
@@ -412,10 +440,10 @@ export default function NextbotGame() {
     ceil.position.set((COLS * CELL) / 2, WALL_H, (ROWS * CELL) / 2)
     scene.add(ceil)
 
-    // ── Walls (instanced) ──
+    // ── Walls (instanced) ── window cells are drawn separately (sill + header).
     const wallCells: [number, number][] = []
     for (let y = 0; y < ROWS; y++)
-      for (let x = 0; x < COLS; x++) if (maze[y][x] === 1) wallCells.push([x, y])
+      for (let x = 0; x < COLS; x++) if (maze[y][x] === 1 && !windowSet.has(key(x, y))) wallCells.push([x, y])
     const wallMat = new THREE.MeshLambertMaterial({ color: '#161a26', flatShading: true })
     const walls = new THREE.InstancedMesh(new THREE.BoxGeometry(CELL, WALL_H, CELL), wallMat, wallCells.length)
     const dummy = new THREE.Object3D()
@@ -425,6 +453,25 @@ export default function NextbotGame() {
       walls.setMatrixAt(i, dummy.matrix)
     })
     scene.add(walls)
+
+    // ── Window gaps: a low sill + high header leave a hole you can jump through.
+    //    Faint teal emissive rim (like the doors) hints "this one's special."
+    const windowMat = new THREE.MeshLambertMaterial({
+      color: '#1b2130',
+      emissive: '#0b2a30',
+      emissiveIntensity: 0.5,
+      flatShading: true,
+    })
+    for (const [gx, gy] of windowCells) {
+      const c = cellCenter(gx, gy)
+      const sill = new THREE.Mesh(new THREE.BoxGeometry(CELL, WINDOW_SILL_H, CELL), windowMat)
+      sill.position.set(c.x, WINDOW_SILL_H / 2, c.z)
+      scene.add(sill)
+      const headerH = WALL_H - WINDOW_LINTEL_Y
+      const header = new THREE.Mesh(new THREE.BoxGeometry(CELL, headerH, CELL), windowMat)
+      header.position.set(c.x, WINDOW_LINTEL_Y + headerH / 2, c.z)
+      scene.add(header)
+    }
 
     // ── Doors (powered) ──
     const doorMat = new THREE.MeshLambertMaterial({
@@ -497,12 +544,17 @@ export default function NextbotGame() {
     camera.add(cup)
 
     // ── Collision (circle vs solid cells) ──
-    function collide(pos: THREE.Vector3, r: number) {
+    //   `camY` (player only) lets you clear a window gap mid-jump; the bot passes
+    //   no height, so window cells always block it.
+    function collide(pos: THREE.Vector3, r: number, camY?: number) {
       const cgx = Math.floor(pos.x / CELL)
       const cgy = Math.floor(pos.z / CELL)
       for (let gy = cgy - 1; gy <= cgy + 1; gy++) {
         for (let gx = cgx - 1; gx <= cgx + 1; gx++) {
-          if (!isSolid(gx, gy) || gx < 0 || gy < 0 || gx >= COLS || gy >= ROWS) continue
+          if (gx < 0 || gy < 0 || gx >= COLS || gy >= ROWS) continue
+          if (!isSolid(gx, gy)) continue
+          // Vault-through: a jumping player above the sill passes the window cell.
+          if (windowSet.has(key(gx, gy)) && camY !== undefined && camY > WINDOW_PASS_Y) continue
           const minX = gx * CELL
           const minZ = gy * CELL
           const cx = Math.max(minX, Math.min(pos.x, minX + CELL))
@@ -710,7 +762,7 @@ export default function NextbotGame() {
         const speed = keys['ShiftLeft'] || keys['ShiftRight'] ? RUN : WALK
         camera.position.x += move.x * speed * dt
         camera.position.z += move.z * speed * dt
-        collide(camera.position, 0.5)
+        collide(camera.position, 0.5, camera.position.y)
 
         // Jump / gravity
         if (keys['Space'] && grounded) {
@@ -869,10 +921,9 @@ export default function NextbotGame() {
         audio.setVolume('heartbeat', Math.min(0.95, shakeAmt * 1.1))
       }
 
-      // Flashlight flicker + beam pulse (cheap mood; runs even in menus).
-      const flick = 0.86 + 0.12 * Math.sin(t * 26) + 0.05 * Math.sin(t * 11.3)
+      // Subtle flashlight flicker (cheap mood; runs even in menus).
+      const flick = 0.9 + 0.08 * Math.sin(t * 26) + 0.04 * Math.sin(t * 11.3)
       flashlight.intensity = FLASH_BASE * flick
-      beamMat.opacity = 0.07 + 0.035 * flick + shakeAmt * 0.05
 
       if (grainRef.current) grainRef.current.style.opacity = (0.07 + shakeAmt * 0.3).toFixed(3)
       if (dangerRef.current) dangerRef.current.style.opacity = (shakeAmt * 0.55).toFixed(3)
@@ -899,7 +950,6 @@ export default function NextbotGame() {
       audio.dispose()
       renderer.dispose()
       faceTex.dispose()
-      beamTex.dispose()
       if (renderer.domElement.parentNode === mount) mount.removeChild(renderer.domElement)
     }
   }, [runId])
@@ -949,8 +999,8 @@ export default function NextbotGame() {
                 <h1 className="text-2xl font-bold text-slate-50">Don’t Get Sipped ☕</h1>
                 <p className="mt-3 text-sm leading-relaxed text-slate-300">
                   You’re Mr. G’s chai latte, lost in the dark. His face hunts you — fast in the open, slow to turn. Round
-                  corners to lose him, and watch for the times he just… stops and stares. Grab all {HALL_PASSES} hall
-                  passes to escape.
+                  corners to lose him, and watch for the times he just… stops and stares. Spot a hole punched in a wall?
+                  Take a running jump through it — he’s too big to follow. Grab all {HALL_PASSES} hall passes to escape.
                 </p>
                 <p className="mt-3 text-xs text-slate-500">
                   WASD move · Shift run · Space jump · Mouse look · <span className="text-cyan-300">E</span> seal a
