@@ -84,6 +84,7 @@ function PanelBody({
   const children = childItems(item.id)
   const related = item.relatedIds.map(getTeaching).filter(Boolean) as Teaching[]
   const clearSelection = useStore((s) => s.select)
+  const setAfterimageOpen = useStore((s) => s.setAfterimageOpen)
 
   return (
     <div className="scroll-slim glass-panel flex min-h-0 flex-col overflow-y-auto rounded-2xl p-5 shadow-panel">
@@ -125,6 +126,15 @@ function PanelBody({
 
       <p className="mt-3 text-sm font-medium leading-relaxed text-slate-200">{item.functionShort}</p>
       <p className="mt-2 text-sm leading-relaxed text-slate-400">{item.functionDeep}</p>
+
+      {item.id === 'eye-opponent-process' && (
+        <button
+          onClick={() => setAfterimageOpen(true)}
+          className="mt-3 w-full rounded-xl border border-neural-500/30 bg-neural-500/10 px-4 py-2 text-sm font-medium text-neural-100 transition-colors hover:bg-neural-500/20"
+        >
+          ✨ Try the afterimage demo
+        </button>
+      )}
 
       {(() => {
         const isEye = !!EYE_BY_ID[item.id]

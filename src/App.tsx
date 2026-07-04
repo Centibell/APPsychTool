@@ -10,6 +10,8 @@ import { QuizModal } from './components/QuizModal'
 import { ViewSwitcher } from './components/ViewSwitcher'
 import { ScenarioPlayer } from './components/ScenarioPlayer'
 import { NervousSystemDiagram } from './components/NervousSystemDiagram'
+import { AfterimageDemo } from './components/AfterimageDemo'
+import { StroopGame } from './components/StroopGame'
 import { Credits } from './components/Credits'
 
 function IconButton({
@@ -54,6 +56,7 @@ export default function App() {
   const scenariosOpen = useStore((s) => s.scenariosOpen)
   const openScenarios = useStore((s) => s.openScenarios)
   const closeScenarios = useStore((s) => s.closeScenarios)
+  const setGameOpen = useStore((s) => s.setGameOpen)
 
   // Intro: the brain opens with the realistic skin on, then it fades off after a
   // few seconds to reveal the interactive wireframe. Cancelled if the user
@@ -71,6 +74,36 @@ export default function App() {
     // Run once on mount; setBrainSkin is stable.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  // Easter egg: the Konami code unlocks the hidden Stroop mini-game.
+  useEffect(() => {
+    const CODE = [
+      'ArrowUp', 'ArrowUp', 'ArrowDown', 'ArrowDown',
+      'ArrowLeft', 'ArrowRight', 'ArrowLeft', 'ArrowRight', 'b', 'a',
+    ]
+    let pos = 0
+    const onKey = (e: KeyboardEvent) => {
+      const key = e.key.length === 1 ? e.key.toLowerCase() : e.key
+      pos = key === CODE[pos] ? pos + 1 : key === CODE[0] ? 1 : 0
+      if (pos === CODE.length) {
+        pos = 0
+        setGameOpen(true)
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [setGameOpen])
+
+  // Mobile/discoverable fallback: tap the title 5 times quickly.
+  const titleTaps = useRef<number[]>([])
+  const onTitleTap = () => {
+    const now = Date.now()
+    titleTaps.current = [...titleTaps.current, now].filter((t) => now - t < 1500)
+    if (titleTaps.current.length >= 5) {
+      titleTaps.current = []
+      setGameOpen(true)
+    }
+  }
 
   if (!webglOk) return <NoWebGLFallback />
 
@@ -91,7 +124,10 @@ export default function App() {
             </svg>
           </IconButton>
           <div>
-            <h1 className="text-base font-bold leading-tight tracking-tight text-slate-100">
+            <h1
+              onClick={onTitleTap}
+              className="cursor-default select-none text-base font-bold leading-tight tracking-tight text-slate-100"
+            >
               Neuromap <span className="text-neural-400">· AP Psychology</span>
             </h1>
             <p className="hidden text-xs text-slate-500 sm:block">
@@ -167,6 +203,8 @@ export default function App() {
       <ConceptBrowser />
       <QuizModal />
       <NervousSystemDiagram />
+      <AfterimageDemo />
+      <StroopGame />
       <Credits />
     </main>
   )

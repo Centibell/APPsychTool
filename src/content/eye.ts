@@ -64,7 +64,7 @@ export const EYE_STRUCTURES: EyeStructure[] = [
     id: 'eye-retina',
     displayName: 'Retina',
     detailLevel: 1,
-    childIds: ['eye-rods', 'eye-cones', 'eye-fovea', 'eye-blind-spot'],
+    childIds: ['eye-rods', 'eye-cones', 'eye-fovea', 'eye-blind-spot', 'eye-trichromatic', 'eye-opponent-process'],
     oneLiner: 'The light-sensitive screen where transduction happens.',
     functionShort:
       'The retina is the inner layer of receptor cells that converts light into neural signals — the moment of transduction.',
@@ -137,6 +137,36 @@ export const EYE_STRUCTURES: EyeStructure[] = [
     apTerms: ['blind spot', 'optic disc'],
     relatedIds: ['eye-optic-nerve', 'eye-retina'],
     examTips: ['The blind spot exists because the optic disc has no receptors; the brain "fills in" the gap.'],
+  },
+  {
+    id: 'eye-trichromatic',
+    displayName: 'Trichromatic Theory',
+    detailLevel: 2,
+    parentId: 'eye-retina',
+    oneLiner: 'Three cone types combine to make every color.',
+    functionShort:
+      'Trichromatic (Young-Helmholtz) theory says the retina has three cone types — red, green, and blue — whose combined activity produces all the colors we see.',
+    functionDeep:
+      'Different wavelengths of light stimulate the three cones in different ratios, and the brain reads that mix as a specific hue. This theory explains color vision at the cone level, and why most color blindness comes from a missing or faulty cone type (often red-green).',
+    apUnits: [1],
+    apTerms: ['trichromatic theory', 'Young-Helmholtz theory', 'cones', 'color blindness'],
+    relatedIds: ['eye-cones', 'eye-opponent-process', 'eye-retina'],
+    examTips: ['Trichromatic = color starts at the three CONES (retina level).'],
+  },
+  {
+    id: 'eye-opponent-process',
+    displayName: 'Opponent-Process Theory',
+    detailLevel: 2,
+    parentId: 'eye-retina',
+    oneLiner: 'Color is coded in opposing pairs — and it explains afterimages.',
+    functionShort:
+      'Opponent-process theory says color is processed in opposing pairs (red–green, blue–yellow, black–white) after the cones, which is why we see negative afterimages.',
+    functionDeep:
+      'Cells are excited by one color of a pair and inhibited by the other. Stare at green and those cells fatigue; look away at white and the red side rebounds, producing a red afterimage. Trichromatic and opponent-process both operate — just at different stages of the visual pathway. Open the afterimage demo to try it.',
+    apUnits: [1],
+    apTerms: ['opponent-process theory', 'afterimage', 'color vision'],
+    relatedIds: ['eye-trichromatic', 'eye-cones', 'visual-cortex'],
+    examTips: ['Opponent-process explains AFTERIMAGES; it works AFTER the cones, further along the pathway.'],
   },
   {
     id: 'eye-optic-nerve',
