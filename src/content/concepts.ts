@@ -153,6 +153,50 @@ export const CONCEPTS: ConceptCard[] = [
     relatedIds: ['neuron', 'synapse', 'action-potential'],
     mnemonic: 'Afferent Arrives (sensory in); Efferent Exits (motor out).',
   },
+  {
+    id: 'concept-neuroplasticity',
+    topic: 'Neural Communication',
+    displayName: 'Neuroplasticity',
+    anchorRegionId: 'hippocampus',
+    oneLiner: 'The brain rewires itself with experience.',
+    functionShort:
+      'Neuroplasticity is the brain’s ability to change its structure and connections in response to experience, learning, or injury.',
+    functionDeep:
+      'Repeated experience strengthens synaptic connections (long-term potentiation), the cellular basis of learning and memory. Plasticity is greatest in childhood but continues throughout life, and it lets undamaged regions sometimes take over functions after brain injury.',
+    apUnits: [1, 2],
+    apTerms: ['neuroplasticity', 'plasticity', 'long-term potentiation'],
+    relatedIds: ['concept-heredity', 'hippocampus', 'nt-glutamate'],
+    examTips: ['Plasticity peaks young but never stops; LTP (synapse strengthening) is the cellular basis of learning.'],
+  },
+
+  // ── Nature & nurture / heredity (Unit 1) ─────────────────────────────────
+  {
+    id: 'concept-heredity',
+    topic: 'Nature & Nurture',
+    displayName: 'Heredity & Twin Studies',
+    oneLiner: 'How psychologists tease apart genes vs. environment.',
+    functionShort:
+      'Twin, family, and adoption studies estimate how much genes versus environment shape traits — the nature-nurture question.',
+    functionDeep:
+      'Comparing identical (monozygotic) twins with fraternal (dizygotic) twins — especially twins raised apart — helps separate genetic from environmental influence. Adoption studies compare children to their biological versus adoptive families. Heritability is the proportion of trait variation in a group attributable to genes; it applies to groups, never to a single person.',
+    apUnits: [1],
+    apTerms: ['nature-nurture', 'twin studies', 'identical twins', 'fraternal twins', 'adoption studies', 'heritability'],
+    relatedIds: ['concept-evolutionary', 'concept-neuroplasticity'],
+    misconceptions: ['Heritability describes variation in a POPULATION, not how “genetic” one individual’s trait is.'],
+  },
+  {
+    id: 'concept-evolutionary',
+    topic: 'Nature & Nurture',
+    displayName: 'Evolutionary Perspective',
+    oneLiner: 'Behavior shaped by natural selection.',
+    functionShort:
+      'The evolutionary perspective explains behaviors and traits as adaptations that were favored by natural selection because they aided survival and reproduction.',
+    functionDeep:
+      'Traits that helped ancestors survive and reproduce became more common over generations (natural selection). Evolutionary psychology applies this to explain universal tendencies — fears of snakes and heights, taste preferences, and mate selection — as inherited adaptations.',
+    apUnits: [1],
+    apTerms: ['evolutionary perspective', 'natural selection', 'adaptation', 'evolutionary psychology'],
+    relatedIds: ['concept-heredity', 'amygdala'],
+  },
 
   // ── Sleep & consciousness (Unit 1) ───────────────────────────────────────
   {
@@ -168,6 +212,65 @@ export const CONCEPTS: ConceptCard[] = [
     apUnits: [1, 2],
     apTerms: ['REM sleep', 'sleep cycle', 'circadian rhythm', 'paradoxical sleep'],
     relatedIds: ['pons', 'hippocampus'],
+  },
+  {
+    id: 'concept-sleep-stages',
+    topic: 'Sleep & Consciousness',
+    displayName: 'Sleep Stages & the Cycle',
+    oneLiner: 'NREM 1–3 and REM, looping about every 90 minutes.',
+    functionShort:
+      'Sleep moves through NREM stages 1–3 and then REM, repeating in roughly 90-minute cycles across the night.',
+    functionDeep:
+      'NREM-1 is light sleep with hypnagogic sensations; NREM-2 adds sleep spindles; NREM-3 is deep slow-wave sleep (delta waves) important for physical restoration. REM brings vivid dreams. As the night goes on, deep sleep shrinks and REM periods lengthen. The whole cycle is governed by the circadian rhythm, your ~24-hour internal clock, cued by light and melatonin.',
+    apUnits: [1],
+    apTerms: ['NREM', 'REM sleep', 'sleep spindles', 'slow-wave sleep', 'delta waves', 'circadian rhythm', 'melatonin'],
+    relatedIds: ['concept-rem-sleep', 'concept-sleep-disorders', 'hypothalamus'],
+    examTips: ['Order: NREM-1 → NREM-2 → NREM-3 → back up → REM. Deep (NREM-3) sleep dominates early night; REM grows later.'],
+  },
+  {
+    id: 'concept-sleep-disorders',
+    topic: 'Sleep & Consciousness',
+    displayName: 'Sleep Disorders',
+    oneLiner: 'Insomnia, narcolepsy, sleep apnea, and night terrors.',
+    functionShort:
+      'Common sleep disorders include insomnia (trouble falling/staying asleep), narcolepsy (sudden sleep attacks), sleep apnea (stopped breathing in sleep), and night terrors.',
+    functionDeep:
+      'Insomnia is persistent difficulty sleeping. Narcolepsy causes uncontrollable sleep attacks, sometimes going straight into REM. Sleep apnea repeatedly stops breathing, fragmenting sleep. Night terrors — high-arousal episodes of NREM-3 — differ from nightmares (which occur in REM) and are most common in children.',
+    apUnits: [1],
+    apTerms: ['insomnia', 'narcolepsy', 'sleep apnea', 'night terrors'],
+    relatedIds: ['concept-sleep-stages'],
+    misconceptions: ['Night terrors happen in deep NREM-3 sleep, not REM — that’s where nightmares occur.'],
+  },
+
+  // ── Drugs & consciousness (Unit 1) ───────────────────────────────────────
+  {
+    id: 'concept-psychoactive-drugs',
+    topic: 'Drugs & Consciousness',
+    displayName: 'Psychoactive Drugs',
+    oneLiner: 'Depressants, stimulants, hallucinogens, and opioids.',
+    functionShort:
+      'Psychoactive drugs alter perception, mood, or consciousness by changing neurotransmitter activity at the synapse. They fall into depressants, stimulants, hallucinogens, and opioids.',
+    functionDeep:
+      'Depressants (alcohol, barbiturates) slow neural activity; stimulants (caffeine, nicotine, cocaine, amphetamines) speed it up; hallucinogens (LSD, marijuana) distort perception; opioids (heroin, morphine) mimic endorphins to blunt pain. Repeated use can bring tolerance (needing more for the same effect), dependence, addiction, and withdrawal when stopping.',
+    apUnits: [1],
+    apTerms: ['psychoactive drugs', 'depressants', 'stimulants', 'hallucinogens', 'opioids', 'tolerance', 'withdrawal', 'addiction'],
+    relatedIds: ['concept-agonist-antagonist', 'synapse', 'nt-dopamine'],
+    examTips: ['Depressants slow you down; stimulants speed you up; hallucinogens distort; opioids mimic endorphins.'],
+  },
+  {
+    id: 'concept-agonist-antagonist',
+    topic: 'Drugs & Consciousness',
+    displayName: 'Agonists & Antagonists',
+    anchorRegionId: 'synapse',
+    oneLiner: 'Drugs that mimic or block neurotransmitters.',
+    functionShort:
+      'An agonist is a drug that mimics or boosts a neurotransmitter by activating its receptor; an antagonist blocks the receptor so the neurotransmitter can’t bind.',
+    functionDeep:
+      'Because receptor sites work like locks, molecules shaped like the right key can either turn the lock (agonists) or jam it (antagonists). Reuptake inhibitors are a related case: they leave more neurotransmitter in the synapse by blocking its reabsorption. Open the demo to see all three at a receptor.',
+    apUnits: [1],
+    apTerms: ['agonist', 'antagonist', 'receptor sites', 'reuptake inhibitor'],
+    relatedIds: ['concept-psychoactive-drugs', 'receptor-sites', 'reuptake', 'synapse'],
+    examTips: ['Agonist = mimics/activates; antagonist = blocks. Reuptake inhibitor = leaves more NT in the synapse.'],
   },
 
   // ── Sensation & Perception (Unit 1) ──────────────────────────────────────

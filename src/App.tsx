@@ -11,6 +11,8 @@ import { ViewSwitcher } from './components/ViewSwitcher'
 import { ScenarioPlayer } from './components/ScenarioPlayer'
 import { NervousSystemDiagram } from './components/NervousSystemDiagram'
 import { AfterimageDemo } from './components/AfterimageDemo'
+import { AgonistAntagonistDemo } from './components/AgonistAntagonistDemo'
+import { SleepCycleDemo } from './components/SleepCycleDemo'
 import { StroopGame } from './components/StroopGame'
 import { Credits } from './components/Credits'
 
@@ -204,6 +206,8 @@ export default function App() {
       <QuizModal />
       <NervousSystemDiagram />
       <AfterimageDemo />
+      <AgonistAntagonistDemo />
+      <SleepCycleDemo />
       <StroopGame />
       <Credits />
     </main>

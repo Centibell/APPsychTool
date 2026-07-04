@@ -57,6 +57,8 @@ interface AppState {
   creditsOpen: boolean
   nervousSystemOpen: boolean
   afterimageOpen: boolean
+  drugDemoOpen: boolean
+  sleepCycleOpen: boolean
   /** Hidden Stroop mini-game (Konami code / tap-the-title easter egg). */
   gameOpen: boolean
 
@@ -90,6 +92,8 @@ interface AppState {
   setCreditsOpen: (open: boolean) => void
   setNervousSystemOpen: (open: boolean) => void
   setAfterimageOpen: (open: boolean) => void
+  setDrugDemoOpen: (open: boolean) => void
+  setSleepCycleOpen: (open: boolean) => void
   setGameOpen: (open: boolean) => void
   toggleBrainSkin: () => void
   setBrainSkin: (on: boolean) => void
@@ -124,6 +128,8 @@ export const useStore = create<AppState>((set, get) => ({
   creditsOpen: false,
   nervousSystemOpen: false,
   afterimageOpen: false,
+  drugDemoOpen: false,
+  sleepCycleOpen: false,
   gameOpen: false,
 
   // On by default so the page opens on a recognizable brain; App auto-fades it
@@ -215,6 +221,8 @@ export const useStore = create<AppState>((set, get) => ({
   setCreditsOpen: (open) => set({ creditsOpen: open }),
   setNervousSystemOpen: (open) => set({ nervousSystemOpen: open }),
   setAfterimageOpen: (open) => set({ afterimageOpen: open }),
+  setDrugDemoOpen: (open) => set({ drugDemoOpen: open }),
+  setSleepCycleOpen: (open) => set({ sleepCycleOpen: open }),
   setGameOpen: (open) => set({ gameOpen: open }),
   toggleBrainSkin: () => set((s) => ({ brainSkin: !s.brainSkin })),
   setBrainSkin: (on) => set({ brainSkin: on }),
