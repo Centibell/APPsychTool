@@ -40,8 +40,8 @@ const EYE = 1.6
 // Everything is FAST now — this is a flat-out panic sprint, not a stroll.
 const WALK = 6.6
 const RUN = 12.2
-const BOT_SPEED = 13.2 // only a hair quicker than a full sprint in a straight line…
-const BOT_TURN = 3.5 // …but a limited turn rate, and it bleeds speed while turning
+const BOT_SPEED = 9.5 // noticeably slower than a full sprint, so straightaways buy distance…
+const BOT_TURN = 2.1 // …and a sluggish turn rate means corners really shake it
 const CATCH_DIST = 1.5
 const HALL_PASSES = 5
 
@@ -387,10 +387,10 @@ export default function NextbotGame() {
     mount.appendChild(renderer.domElement)
 
     const scene = new THREE.Scene()
-    scene.background = new THREE.Color('#04050a')
+    scene.background = new THREE.Color('#05070e')
     // Exponential fog reads moodier than linear and costs the same — it swallows
     // the low-poly geometry into darkness a few cells out.
-    scene.fog = new THREE.FogExp2('#04050a', 0.082)
+    scene.fog = new THREE.FogExp2('#05070e', 0.05)
 
     const camera = new THREE.PerspectiveCamera(74, mount.clientWidth / mount.clientHeight, 0.1, 60)
     const start = cellCenter(startCell[0], startCell[1])
@@ -404,12 +404,15 @@ export default function NextbotGame() {
     //   real star — a bright, tight flashlight spot from the camera — carves a
     //   crisp pool of illumination wherever you look. A small point light at the
     //   lens gives a warm bubble around you so nearby geometry isn't pitch black.
-    scene.add(new THREE.AmbientLight('#0a0e18', 0.32))
-    scene.add(new THREE.HemisphereLight('#1a2436', '#04060c', 0.28))
-    // SpotLight(color, intensity, distance, angle, penumbra, decay). A fairly
-    // tight angle + modest penumbra = a defined bright circle, not a wash.
-    const FLASH_BASE = 11
-    const flashlight = new THREE.SpotLight('#fff1d4', FLASH_BASE, 36, 0.5, 0.28, 1.15)
+    // A real ambient floor so nothing is pure black and the game stays playable,
+    // then a big warm flashlight on top so the pool you're looking at is brightly
+    // lit — you can read the whole room in the beam.
+    scene.add(new THREE.AmbientLight('#2a3350', 0.85))
+    scene.add(new THREE.HemisphereLight('#3a4a6a', '#0a0e18', 0.6))
+    // SpotLight(color, intensity, distance, angle, penumbra, decay). Wide + very
+    // bright = a broad, strongly-lit circle wherever you look.
+    const FLASH_BASE = 34
+    const flashlight = new THREE.SpotLight('#fff3da', FLASH_BASE, 46, 0.62, 0.32, 1.05)
     flashlight.position.set(0, 0, 0.2)
     camera.add(flashlight)
     const flashTarget = new THREE.Object3D()
@@ -417,8 +420,8 @@ export default function NextbotGame() {
     camera.add(flashTarget)
     flashlight.target = flashTarget
     // Warm short-range fill riding the camera so your hands/cup and the walls
-    // right beside you read even outside the beam.
-    const lensGlow = new THREE.PointLight('#ffdca6', 2.4, 6, 1.6)
+    // right beside you are clearly lit even outside the beam.
+    const lensGlow = new THREE.PointLight('#ffe1b0', 5, 10, 1.4)
     lensGlow.position.set(0, -0.05, 0.1)
     camera.add(lensGlow)
 
@@ -562,10 +565,23 @@ export default function NextbotGame() {
           const dx = pos.x - cx
           const dz = pos.z - cz
           const d2 = dx * dx + dz * dz
-          if (d2 < r * r && d2 > 1e-6) {
+          if (d2 > r * r) continue // circle clear of this cell
+          if (d2 > 1e-6) {
             const d = Math.sqrt(d2)
             pos.x += (dx / d) * (r - d)
             pos.z += (dz / d) * (r - d)
+          } else {
+            // Center is INSIDE the cell (fast tunneling): eject out the nearest
+            // face so it can't punch through a one-cell-thick wall like a window.
+            const left = pos.x - minX
+            const right = minX + CELL - pos.x
+            const near = pos.z - minZ
+            const far = minZ + CELL - pos.z
+            const m = Math.min(left, right, near, far)
+            if (m === left) pos.x = minX - r
+            else if (m === right) pos.x = minX + CELL + r
+            else if (m === near) pos.z = minZ - r
+            else pos.z = minZ + CELL + r
           }
         }
       }
@@ -818,7 +834,7 @@ export default function NextbotGame() {
               lungeArmed = false
             }
           } else lungeArmed = true
-          const turnRate = losBot ? BOT_TURN * 2.4 : BOT_TURN
+          const turnRate = losBot ? BOT_TURN * 1.7 : BOT_TURN
           if (lunging) botHeading = desired
           else botHeading += Math.max(-turnRate * dt, Math.min(turnRate * dt, diff))
           const floorSpd = losBot ? 0.78 : 0.4
