@@ -49,17 +49,30 @@ const CATCH_DIST = 1.5
 const HALL_PASSES = 5
 
 // AI tuning. Only ONE bot actively chases at a time (fair, since you don't know
-// the layout); the rest lurk — peeking around corners, darting in and out of
-// sight — and periodically trade off who's "it".
-const STALK_MAX_DIST = 17
-const HUNT_TURN: [number, number] = [9, 16] // seconds one bot chases before handing off
-const STALK_SPEED = 5.4 // sneak pace between peeks (much slower than a chase)
-const STALK_RETARGET: [number, number] = [2.4, 4.5] // how long to commit to a lurk move
-const PEEK_HOLD: [number, number] = [0.35, 1.0] // seconds it lets you see it before darting back
+// the layout); the rest STALK — and stalking is deliberately glimpse-and-flee,
+// per documented nextbot/analog-horror behavior: dart across a distant hallway,
+// ease a quick peek around a corner then bolt, never linger and stare. The
+// "hunter" role reassigns to whichever bot is best placed to chase.
+const STALK_MAX_DIST = 20
+const HUNT_TURN: [number, number] = [8, 14] // seconds one bot chases before a scheduled handoff
+const HANDOFF_MARGIN = 6 // if a lurker is this many grid-cells closer than the hunter, it takes over
+const STALK_SPEED = 5.2 // slow creep (lurking in cover)
+const STALK_PEEK_SPEED = 7.4 // easing out for a peek
+const STALK_RUN_SPEED = 10.5 // a run-by / bolt-back-to-cover dash
+const STALK_KEEPAWAY = 6 // a stalker never loiters closer than this — it retreats instead
+const STALK_RETARGET: [number, number] = [1.6, 3.0] // how long it commits to one stalk move
+const PEEK_HOLD: [number, number] = [0.15, 0.5] // brief moment it lets you see it before bolting
 const SHAKE_RANGE = 9 // bot within this many units starts to rattle the camera
 const STOMP_RANGE = 11 // chaser within this many units → you hear heavy stomps
 const STOMP_SLOW = 0.58 // seconds between stomps at the edge of range…
 const STOMP_FAST = 0.26 // …tightening to this when he's right on top of you
+const STOMP_SHAKE = 0.09 // radians of jolt kicked into the camera on each footfall
+
+// Flickering ceiling lights for ambiance. Cheap: mostly unlit glowing quads
+// (fog-fade in the distance); only a couple also cast a real dim point light.
+const FIXTURE_STRIDE = 3 // place a fixture roughly every Nth grid cell
+const FIXTURE_MAX = 14 // hard cap on glowing fixtures
+const FIXTURE_LIGHTS = 2 // of those, how many also cast a real (flickering) light
 
 // Map generation
 const ROOM_TRIES = 90
@@ -83,7 +96,11 @@ const WINDOW_PASS_Y = 1.95 // camera height needed to be through the gap
 
 type Phase = 'menu' | 'playing' | 'paused' | 'caught' | 'won'
 type BotState = 'hunt' | 'stalk'
-type StalkKind = 'peek' | 'lurk' | 'rush'
+// crossby — sprint across a distant sightline (a fleeting "did I see that?")
+// peek    — ease out just far enough to be seen, then bolt
+// lurk    — creep to cover, out of view
+// retreat — dash back to cover after being seen
+type StalkKind = 'crossby' | 'peek' | 'lurk' | 'retreat'
 
 interface Door {
   gx: number
@@ -502,6 +519,64 @@ export default function NextbotGame() {
     ceil.position.set((COLS * CELL) / 2, WALL_H, (ROWS * CELL) / 2)
     scene.add(ceil)
 
+    // ── Flickering ceiling lights (ambiance) ──
+    // Mostly cheap: unlit additive glow quads that fog-fade into the dark; only
+    // FIXTURE_LIGHTS of them also cast a real (flickering) point light.
+    interface Fixture {
+      mat: THREE.MeshBasicMaterial
+      light: THREE.PointLight | null
+      seed: number
+      base: number // baseline brightness (some tubes are dim/dying)
+      strobe: boolean // heavy stutter vs. a steadier hum
+    }
+    const fixtures: Fixture[] = []
+    const fixGeo = new THREE.PlaneGeometry(CELL * 0.55, CELL * 0.55)
+    {
+      const cands = openCells.filter(([x, y]) => x % FIXTURE_STRIDE === 1 && y % FIXTURE_STRIDE === 1)
+      for (let i = cands.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1))
+        ;[cands[i], cands[j]] = [cands[j], cands[i]]
+      }
+      cands.slice(0, FIXTURE_MAX).forEach(([gx, gy], i) => {
+        const c = cellCenter(gx, gy)
+        const mat = new THREE.MeshBasicMaterial({
+          color: '#dfe8ff',
+          transparent: true,
+          opacity: 0.8,
+          fog: true,
+          blending: THREE.AdditiveBlending,
+          depthWrite: false,
+          side: THREE.DoubleSide,
+        })
+        const m = new THREE.Mesh(fixGeo, mat)
+        m.rotation.x = Math.PI / 2 // face down
+        m.position.set(c.x, WALL_H - 0.06, c.z)
+        scene.add(m)
+        let light: THREE.PointLight | null = null
+        if (i < FIXTURE_LIGHTS) {
+          light = new THREE.PointLight('#cfe0ff', 2.2, 9, 1.4)
+          light.position.set(c.x, WALL_H - 0.4, c.z)
+          scene.add(light)
+        }
+        fixtures.push({
+          mat,
+          light,
+          seed: Math.random() * 100,
+          base: 0.5 + Math.random() * 0.5,
+          strobe: Math.random() < 0.45,
+        })
+      })
+    }
+    const fixtureFlicker = (fx: Fixture, tt: number) => {
+      let v = 0.82 + 0.18 * Math.sin(tt * (2 + (fx.seed % 3)) + fx.seed)
+      if (fx.strobe) {
+        const st = Math.sin(tt * 47 + fx.seed * 13) + Math.sin(tt * 23 + fx.seed * 7)
+        if (st > 1.4) v *= 0.12 // brief blackout of a failing tube
+        else if (st < -1.6) v *= 0.45
+      }
+      return Math.max(0, Math.min(1, v)) * fx.base
+    }
+
     // ── Walls (instanced) ── window cells are drawn separately (sill + header).
     const wallCells: [number, number][] = []
     for (let y = 0; y < ROWS; y++)
@@ -708,6 +783,41 @@ export default function NextbotGame() {
       return [curc % COLS, (curc / COLS) | 0]
     }
 
+    // BFS distance FIELD from a cell to everywhere (grid steps, walls+windows
+    // solid). Used to reassign the hunter to whichever bot is genuinely closest
+    // *through the halls* — so vaulting a window (which a bot can't follow) makes
+    // a nearer lurker take over instead of the now-far chaser.
+    const distField = new Int16Array(COLS * ROWS)
+    function computeDistField(sx: number, sy: number) {
+      distField.fill(-1)
+      if (sx < 0 || sy < 0 || sx >= COLS || sy >= ROWS || isSolid(sx, sy)) return
+      distField[sy * COLS + sx] = 0
+      const q: number[] = [sy * COLS + sx]
+      const nb = [1, -1, COLS, -COLS]
+      let head = 0
+      while (head < q.length) {
+        const curc = q[head++]
+        const cx = curc % COLS
+        const cy = (curc / COLS) | 0
+        for (const d of nb) {
+          const nx = d === 1 ? cx + 1 : d === -1 ? cx - 1 : cx
+          const ny = d === COLS ? cy + 1 : d === -COLS ? cy - 1 : cy
+          if (isSolid(nx, ny)) continue
+          const ni = ny * COLS + nx
+          if (distField[ni] !== -1) continue
+          distField[ni] = distField[curc] + 1
+          q.push(ni)
+        }
+      }
+    }
+    const botCellDist = (b: Bot) => {
+      const gx = Math.floor(b.sprite.position.x / CELL)
+      const gy = Math.floor(b.sprite.position.z / CELL)
+      if (gx < 0 || gy < 0 || gx >= COLS || gy >= ROWS) return 9999
+      const v = distField[gy * COLS + gx]
+      return v < 0 ? 9999 : v
+    }
+
     // Pick a random-ish cell near the player matching a visibility want:
     //   'seen'   — in the player's view cone WITH line of sight (to peek/appear)
     //   'hidden' — out of view (to lurk / dart back to cover)
@@ -821,35 +931,65 @@ export default function NextbotGame() {
       b.stalkT = 0
       b.bfsTimer = 0
     }
-    // Choose the stalker's next move: peek into view, lurk in cover, or a rush.
+    // A "run-by" target: a far cell on the OPPOSITE lateral side from where the
+    // bot is now, biased toward the front — so pathing there sends it sprinting
+    // across a distant sightline in front of you (a fleeting silhouette).
+    const findCrossCell = (b: Bot, px: number, pz: number, fx: number, fz: number): [number, number] | null => {
+      const rx = -fz // right vector (perpendicular to forward)
+      const rz = fx
+      const botLat = (b.sprite.position.x - px) * rx + (b.sprite.position.z - pz) * rz
+      let best: [number, number] | null = null
+      let bestScore = -1
+      for (const [gx, gy] of openCells) {
+        const c = cellCenter(gx, gy)
+        const dx = c.x - px
+        const dz = c.z - pz
+        const d = Math.hypot(dx, dz)
+        if (d < 9 || d > STALK_MAX_DIST) continue
+        const lat = dx * rx + dz * rz
+        if (botLat !== 0 && Math.sign(lat) === Math.sign(botLat)) continue // same side → no crossing
+        const fwdAmt = (dx * fx + dz * fz) / d
+        if (fwdAmt < -0.15) continue // keep the crossing roughly ahead of you
+        const score = Math.abs(lat) + Math.max(0, fwdAmt) * 4 + Math.random() * 3
+        if (score > bestScore) {
+          bestScore = score
+          best = [gx, gy]
+        }
+      }
+      return best
+    }
+    // Choose the stalker's next move. Heavily biased to glimpse-and-flee:
+    // run across the distance, or a quick corner peek — rarely just lurk.
     const chooseStalkMove = (b: Bot, px: number, pz: number, fx: number, fz: number) => {
       const roll = Math.random()
       let kind: StalkKind
       let target: [number, number] | null
-      if (roll < 0.4) {
-        kind = 'peek' // slip to a spot you can just see, then dart back
-        target = findCell(px, pz, fx, fz, 'seen', 6, STALK_MAX_DIST, 0.55)
-      } else if (roll < 0.75) {
-        kind = 'lurk' // drift to cover, out of sight
-        target = findCell(px, pz, fx, fz, 'hidden', 5, 14)
+      if (roll < 0.5) {
+        kind = 'crossby' // sprint across a distant hallway
+        target = findCrossCell(b, px, pz, fx, fz) ?? findCell(px, pz, fx, fz, 'seen', 9, STALK_MAX_DIST, 0.1)
+      } else if (roll < 0.82) {
+        kind = 'peek' // ease out around a corner just far enough to be seen
+        target = findCell(px, pz, fx, fz, 'seen', 6, 13, 0.5)
       } else {
-        kind = 'rush' // charge in close and in view… then retreat
-        target = findCell(px, pz, fx, fz, 'seen', 3, 8, 0.2)
+        kind = 'lurk' // brief reposition in cover
+        target = findCell(px, pz, fx, fz, 'hidden', 6, 14)
       }
-      if (!target) target = findCell(px, pz, fx, fz, 'any', 4, 16)
+      if (!target) target = findCell(px, pz, fx, fz, 'any', 6, 16)
       b.stalkKind = kind
       b.stalkTarget = target
       b.stalkT = rand(STALK_RETARGET)
       b.peekHold = rand(PEEK_HOLD)
-      if (kind === 'peek' || kind === 'rush') audio.play('stalk')
+      if (kind !== 'lurk') audio.play('stalk') // a little scrape as it moves into view
     }
-    // Send a stalker back to cover (the "back out and retreat" beat).
+    // Bolt back to cover (the "…then it's gone" beat) at a run.
     const startRetreat = (b: Bot, px: number, pz: number, fx: number, fz: number) => {
-      b.stalkKind = 'lurk'
-      b.stalkTarget = findCell(px, pz, fx, fz, 'hidden', 6, 15) ?? findCell(px, pz, fx, fz, 'any', 5, 16)
+      b.stalkKind = 'retreat'
+      b.stalkTarget = findCell(px, pz, fx, fz, 'hidden', 7, 16) ?? findCell(px, pz, fx, fz, 'any', 6, 18)
       b.stalkT = rand(STALK_RETARGET)
       b.peekHold = rand(PEEK_HOLD)
     }
+    const stalkSpeed = (k: StalkKind) =>
+      k === 'crossby' || k === 'retreat' ? STALK_RUN_SPEED : k === 'peek' ? STALK_PEEK_SPEED : STALK_SPEED
     // Move a bot one step toward a grid cell via BFS; returns true once close.
     const stepToward = (b: Bot, target: [number, number], spd: number, dt: number, t: number) => {
       const bp = b.sprite.position
@@ -884,6 +1024,8 @@ export default function NextbotGame() {
     let bob = 0
     let raf = 0
     let stompTimer = 0
+    let stompShake = 0 // discrete jolt that spikes on each footfall and decays
+    let distFieldTimer = 0 // throttle the BFS field used for hunter reassignment
     const tmp = new THREE.Vector3()
 
     function frame() {
@@ -924,21 +1066,40 @@ export default function NextbotGame() {
           grounded = true
         }
 
-        // ── Bots: exactly ONE hunts at a time; the rest stalk. Roles trade off
-        //    on a timer, so you're only ever actively chased by one. ──
+        // ── Bots: exactly ONE hunts at a time; the rest stalk. ──
         const px = camera.position.x
         const pz = camera.position.z
 
+        // Refresh the path-distance field from the player (throttled) so hunter
+        // reassignment reflects real reachability through the halls.
+        distFieldTimer -= dt
+        if (distFieldTimer <= 0) {
+          distFieldTimer = 0.3
+          computeDistField(Math.floor(px / CELL), Math.floor(pz / CELL))
+        }
+
         hunterTurnT -= dt
         let hunter = bots.find((b) => b.state === 'hunt') ?? null
-        if (bots.length > 1 && (hunterTurnT <= 0 || !hunter)) {
-          const stalkers = bots.filter((b) => b !== hunter && b.state === 'stalk')
-          const next = stalkers.length ? stalkers[Math.floor(Math.random() * stalkers.length)] : null
-          if (next) {
-            if (hunter) enterStalk(hunter)
-            makeHunter(next)
-            hunter = next
+        // The best-placed lurker (closest to you through the halls) is the natural
+        // next hunter — this is what makes a window vault flip the chase to the bot
+        // on your side instead of the one now stuck far away.
+        let closest: Bot | null = null
+        let closestD = Infinity
+        for (const b of bots) {
+          if (b === hunter) continue
+          const dd = botCellDist(b)
+          if (dd < closestD) {
+            closestD = dd
+            closest = b
           }
+        }
+        const hunterD = hunter ? botCellDist(hunter) : Infinity
+        const wantHandoff =
+          !hunter || hunterTurnT <= 0 || (closest !== null && closestD + HANDOFF_MARGIN < hunterD)
+        if (bots.length > 1 && wantHandoff && closest) {
+          if (hunter) enterStalk(hunter)
+          makeHunter(closest)
+          hunter = closest
           hunterTurnT = rand(HUNT_TURN)
         } else if (!hunter) {
           makeHunter(bots[0])
@@ -1004,20 +1165,24 @@ export default function NextbotGame() {
             // Catch (only the active hunter bites)
             if (distP < CATCH_DIST) caught = true
           } else {
-            // ── Stalk: peek / lurk / rush, PATHING between spots so it slinks in
-            //    and out of sight — round a corner, hold your gaze, dart back. ──
+            // ── Stalk: glimpse-and-flee, PATHING between spots — sprint across a
+            //    far hallway, quick corner peek, then bolt back to cover. ──
             if (!b.stalkTarget || b.stalkT <= 0) chooseStalkMove(b, px, pz, fwd.x, fwd.z)
             b.stalkT -= dt
-            // Once it's let you get a good look (peek/rush), retreat to cover.
-            if (b.stalkKind !== 'lurk' && seen) {
+            // Never loiter close and stare: if it drifts too near you (and isn't
+            // already fleeing), it bolts.
+            if (distP < STALK_KEEPAWAY && b.stalkKind !== 'retreat') {
+              startRetreat(b, px, pz, fwd.x, fwd.z)
+            } else if ((b.stalkKind === 'peek' || b.stalkKind === 'crossby') && seen) {
+              // The instant you clock it, it holds only a beat, then bolts.
               b.peekHold -= dt
               if (b.peekHold <= 0) startRetreat(b, px, pz, fwd.x, fwd.z)
             }
             if (b.stalkTarget) {
-              const spd = b.stalkKind === 'rush' ? BOT_SPEED * 0.85 : STALK_SPEED
-              if (stepToward(b, b.stalkTarget, spd, dt, t)) {
-                if (b.stalkKind === 'lurk') b.stalkT = Math.min(b.stalkT, rand([0.3, 1.1] as [number, number]))
-                else startRetreat(b, px, pz, fwd.x, fwd.z) // reached a peek/rush point → back out
+              if (stepToward(b, b.stalkTarget, stalkSpeed(b.stalkKind), dt, t)) {
+                if (b.stalkKind === 'lurk' || b.stalkKind === 'retreat')
+                  b.stalkT = Math.min(b.stalkT, rand([0.2, 0.7] as [number, number])) // brief pause, then a new move
+                else startRetreat(b, px, pz, fwd.x, fwd.z) // reached a peek/cross point → gone
               }
             }
           }
@@ -1041,17 +1206,20 @@ export default function NextbotGame() {
           audio.stopLoop('footsteps')
         }
 
-        // Heavy stomps once the chaser is nearby; cadence tightens as he closes.
+        // Heavy stomps once the chaser is nearby; cadence tightens as he closes,
+        // and each footfall kicks a big synced jolt into the camera.
         if (hunterDist < STOMP_RANGE) {
           stompTimer -= dt
           if (stompTimer <= 0) {
             audio.play('stomp')
             const closeness = 1 - hunterDist / STOMP_RANGE // 0 at edge → 1 point-blank
             stompTimer = STOMP_SLOW - (STOMP_SLOW - STOMP_FAST) * closeness
+            stompShake = Math.max(stompShake, 0.45 + 0.55 * closeness) // spike the jolt
           }
         } else {
           stompTimer = 0 // ready to thud the instant he's close again
         }
+        stompShake = Math.max(0, stompShake - dt * 7) // fast decay → a sharp kick
 
         if (caught) {
           ending = true
@@ -1099,9 +1267,12 @@ export default function NextbotGame() {
         const nX = (Math.sin(ms * 0.013) + Math.sin(ms * 0.007)) * 0.5
         const nY = (Math.sin(ms * 0.011 + 1.7) + Math.sin(ms * 0.006 + 0.5)) * 0.5
         const nZ = Math.sin(ms * 0.017 + 3.1)
-        camera.rotation.y = yaw + nX * 0.02 * shakeAmt
-        camera.rotation.x = pitch + nY * 0.02 * shakeAmt
-        camera.rotation.z = nZ * 0.035 * shakeAmt
+        // Big discrete stomp jolt (jj) rides on top of the smooth proximity shake:
+        // a sharp downward pitch dip + roll on every footfall.
+        const jj = stompShake * stompShake
+        camera.rotation.y = yaw + nX * 0.02 * shakeAmt + nZ * STOMP_SHAKE * 0.5 * jj
+        camera.rotation.x = pitch + nY * 0.02 * shakeAmt - STOMP_SHAKE * jj
+        camera.rotation.z = nZ * 0.035 * shakeAmt + Math.sign(nZ) * STOMP_SHAKE * 0.6 * jj
 
         // Heartbeat swells as he closes in.
         audio.setVolume('heartbeat', Math.min(0.95, shakeAmt * 1.1))
@@ -1110,6 +1281,13 @@ export default function NextbotGame() {
       // Subtle flashlight flicker (cheap mood; runs even in menus).
       const flick = 0.9 + 0.08 * Math.sin(t * 26) + 0.04 * Math.sin(t * 11.3)
       flashlight.intensity = FLASH_BASE * flick
+
+      // Flickering ceiling fixtures (ambiance; also runs on the menu).
+      for (const fx of fixtures) {
+        const v = fixtureFlicker(fx, t)
+        fx.mat.opacity = 0.12 + 0.88 * v
+        if (fx.light) fx.light.intensity = 0.35 + 2.4 * v
+      }
 
       if (grainRef.current) grainRef.current.style.opacity = (0.07 + shakeAmt * 0.3).toFixed(3)
       if (dangerRef.current) dangerRef.current.style.opacity = (shakeAmt * 0.55).toFixed(3)
@@ -1136,6 +1314,8 @@ export default function NextbotGame() {
       audio.dispose()
       renderer.dispose()
       faceTex.dispose()
+      fixGeo.dispose()
+      fixtures.forEach((f) => f.mat.dispose())
       if (renderer.domElement.parentNode === mount) mount.removeChild(renderer.domElement)
     }
     // Rebuild the level when the hunter count changes (only ever tweaked from the
