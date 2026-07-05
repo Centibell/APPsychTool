@@ -1,7 +1,7 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import * as THREE from 'three'
 import { useStore } from '../store'
-import { makeFaceTexture } from './face'
+import { makeFaceTexture, makeFaceDataURL } from './face'
 import { GameAudio } from './audio'
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -267,9 +267,24 @@ export default function NextbotGame() {
   const [passes, setPasses] = useState(0)
   const [runId, setRunId] = useState(0)
   const [botCount, setBotCount] = useState(DEFAULT_BOTS)
+  const [scareDone, setScareDone] = useState(false)
   const phaseRef = useRef<Phase>('menu')
   const startRef = useRef<() => void>(() => {})
   phaseRef.current = phase
+  // Face used for the full-screen capture jumpscare (placeholder until the real
+  // photo lands — see makeFaceDataURL). Built once.
+  const faceURL = useMemo(() => makeFaceDataURL(), [])
+
+  // On capture, hold the jumpscare for a beat before revealing the retry menu.
+  useEffect(() => {
+    if (phase !== 'caught') {
+      setScareDone(false)
+      return
+    }
+    setScareDone(false)
+    const id = setTimeout(() => setScareDone(true), 1200)
+    return () => clearTimeout(id)
+  }, [phase])
 
   useEffect(() => {
     const mount = mountRef.current
@@ -1043,7 +1058,8 @@ export default function NextbotGame() {
           audio.stopLoop('footsteps')
           audio.stopLoop('heartbeat')
           audio.stopLoop('ambient')
-          audio.play('catch')
+          audio.play('catch') // scream stinger
+          audio.play('voiceline') // Mr. G's line over the jumpscare
           document.exitPointerLock()
           setPhase('caught')
         }
@@ -1163,8 +1179,26 @@ export default function NextbotGame() {
         </>
       )}
 
+      {/* Capture jumpscare: Mr. G's face lunges to fill the screen */}
+      {phase === 'caught' && !scareDone && (
+        <div className="pointer-events-none absolute inset-0 z-[70] overflow-hidden bg-black">
+          <div className="absolute inset-0" style={{ animation: 'nb-scare-shake 0.11s steps(2) infinite' }}>
+            <img
+              src={faceURL}
+              alt=""
+              className="h-full w-full object-cover"
+              style={{ animation: 'nb-scare-in 0.32s ease-out both' }}
+            />
+          </div>
+          <div
+            className="absolute inset-0 mix-blend-overlay"
+            style={{ background: 'radial-gradient(circle, rgba(150,0,0,0) 42%, rgba(130,0,0,0.65) 100%)' }}
+          />
+        </div>
+      )}
+
       {/* Overlays */}
-      {phase !== 'playing' && (
+      {phase !== 'playing' && !(phase === 'caught' && !scareDone) && (
         <div className="absolute inset-0 grid place-items-center bg-black/70 p-6 text-center backdrop-blur-sm">
           <div className="max-w-sm">
             {phase === 'menu' && (

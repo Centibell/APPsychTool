@@ -11,7 +11,9 @@ import * as THREE from 'three'
 // Until then, this draws a deliberately-unsettling placeholder so the game is
 // fully playable and verifiable.
 
-export function makeFaceTexture(): THREE.Texture {
+// Draws the placeholder face onto a fresh canvas and returns it. Shared by the
+// in-world sprite texture and the full-screen capture jumpscare.
+export function makeFaceCanvas(): HTMLCanvasElement {
   const c = document.createElement('canvas')
   c.width = c.height = 256
   const ctx = c.getContext('2d')!
@@ -60,7 +62,17 @@ export function makeFaceTexture(): THREE.Texture {
   ctx.textAlign = 'center'
   ctx.fillText('MR. G', 128, 232)
 
-  const tex = new THREE.CanvasTexture(c)
+  return c
+}
+
+export function makeFaceTexture(): THREE.Texture {
+  const tex = new THREE.CanvasTexture(makeFaceCanvas())
   tex.colorSpace = THREE.SRGBColorSpace
   return tex
+}
+
+// PNG data URL of the placeholder face, for the DOM capture jumpscare overlay.
+// SWAP-IN POINT: when the real photo lands, return its imported URL instead.
+export function makeFaceDataURL(): string {
+  return makeFaceCanvas().toDataURL('image/png')
 }

@@ -14,7 +14,7 @@ import * as THREE from 'three'
 //  first user gesture (clicking “Enter the dark”), per browser autoplay rules.
 // ─────────────────────────────────────────────────────────────────────────
 
-export type SoundName = 'ambient' | 'heartbeat' | 'footsteps' | 'stomp' | 'stalk' | 'lunge' | 'catch'
+export type SoundName = 'ambient' | 'heartbeat' | 'footsteps' | 'stomp' | 'stalk' | 'lunge' | 'catch' | 'voiceline'
 
 interface SoundDef {
   url: string
@@ -31,14 +31,18 @@ const MANIFEST: Record<SoundName, SoundDef> = {
   heartbeat: { url: '/sfx/heartbeat.mp3', loop: true, volume: 0 },
   // Spatialized footsteps emitted from the bot while it hunts.
   footsteps: { url: '/sfx/footsteps.mp3', loop: true, volume: 0.7, positional: true, refDistance: 4 },
-  // Heavy floor-shaking stomp, played on a tightening cadence as the chaser nears.
-  stomp: { url: '/sfx/stomp.mp3', volume: 0.95 },
+  // Heavy floor-shaking stomp, played on a tightening cadence as the chaser
+  // nears. Ships with a synthesized placeholder (.wav); swap for a real .mp3.
+  stomp: { url: '/sfx/stomp.wav', volume: 0.95 },
   // One-shot stinger when it appears to stalk.
   stalk: { url: '/sfx/stalk.mp3', volume: 0.8 },
   // One-shot growl when it locks on and lunges point-blank.
   lunge: { url: '/sfx/lunge.mp3', volume: 0.9 },
   // The jumpscare on capture.
   catch: { url: '/sfx/catch.mp3', volume: 1 },
+  // Mr. G's voice line on the capture jumpscare. Ships with a spoken
+  // placeholder (.wav, SAPI TTS); swap for a real recording.
+  voiceline: { url: '/sfx/voiceline.wav', volume: 1 },
 }
 
 export class GameAudio {
