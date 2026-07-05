@@ -15,16 +15,16 @@ import { GameAudio } from './audio'
 //  real rooms and open spaces linked by looping halls — learnable but different
 //  every run.
 //
-//  The bot runs a small state machine:
-//    • hunt       — BFS-pathfinds to you; locks on and lunges with line-of-sight.
-//    • stalk      — teleports into view ahead of you and just *watches*, then
-//                   vanishes the moment you look away (classic peek/《SCP-173》/
-//                   nextbot "stare" behavior). Builds dread without a chase.
-//    • reposition — invisible for a beat, then re-materializes out of sight to
-//                   resume the hunt.
+//  Two bots share a coordinated state machine — exactly ONE actively chases at
+//  a time (fair, since you don't know the layout), the rest stalk, and they
+//  trade off the "hunter" role on a timer:
+//    • hunt  — BFS-pathfinds to you; locks on and lunges with line-of-sight.
+//    • stalk — pathfinds between spots to slink in and out of view: peek around
+//              a corner and hold your gaze, lurk in cover, or rush in close then
+//              dart back out (classic peek/《SCP-173》/nextbot dread behavior).
 //
-//  Very rarely the map seeds a powered door: seal it (E) mid-chase to cut him
-//  off, forcing a long reroute — or a switch to stalking.
+//  Very rarely the map seeds a powered door: seal it (E) mid-chase to cut the
+//  hunter off, forcing its turn to hand off early — a long reroute or a stalk.
 //
 //  Deliberately cheap so it runs on weak hardware: flat-shaded instanced walls,
 //  no shadows, one spotlight, heavy fog + a film-grain overlay to hide the low
@@ -46,13 +46,14 @@ const BOT_COUNT = 2 // two of Mr. G's faces hunt you
 const CATCH_DIST = 1.5
 const HALL_PASSES = 5
 
-// AI tuning
-const STALK_MIN_DIST = 8
+// AI tuning. Only ONE bot actively chases at a time (fair, since you don't know
+// the layout); the rest lurk — peeking around corners, darting in and out of
+// sight — and periodically trade off who's "it".
 const STALK_MAX_DIST = 17
-const STALK_MAX_TIME = 6.5
-const STALK_VANISH_LOOKAWAY = 0.32 // seconds of you looking away before it's gone
-const HUNT_BEFORE_STALK: [number, number] = [12, 22] // seconds of hunting first
-const REPOSITION_TIME: [number, number] = [0.7, 1.3]
+const HUNT_TURN: [number, number] = [9, 16] // seconds one bot chases before handing off
+const STALK_SPEED = 5.4 // sneak pace between peeks (much slower than a chase)
+const STALK_RETARGET: [number, number] = [2.4, 4.5] // how long to commit to a lurk move
+const PEEK_HOLD: [number, number] = [0.35, 1.0] // seconds it lets you see it before darting back
 const SHAKE_RANGE = 9 // bot within this many units starts to rattle the camera
 
 // Map generation
@@ -76,7 +77,8 @@ const WINDOW_LINTEL_Y = 2.75 // solid header above the hole
 const WINDOW_PASS_Y = 1.95 // camera height needed to be through the gap
 
 type Phase = 'menu' | 'playing' | 'paused' | 'caught' | 'won'
-type BotState = 'hunt' | 'stalk' | 'reposition'
+type BotState = 'hunt' | 'stalk'
+type StalkKind = 'peek' | 'lurk' | 'rush'
 
 interface Door {
   gx: number
@@ -88,19 +90,20 @@ interface Door {
   shut: boolean
 }
 
-// Per-hunter state — each nextbot runs its own copy of the state machine.
+// Per-bot state. One is the active hunter; the others stalk with their own
+// little peek/lurk/rush sub-behaviour.
 interface Bot {
   sprite: THREE.Sprite
   mat: THREE.SpriteMaterial
   state: BotState
-  stateT: number
   heading: number
   waypoint: THREE.Vector3
-  huntUntilStalk: number
-  repositionT: number
-  vanishT: number
   bfsTimer: number
   lungeArmed: boolean
+  stalkKind: StalkKind
+  stalkTarget: [number, number] | null
+  stalkT: number // time left committed to the current stalk move
+  peekHold: number // time left visible before darting back to cover
 }
 
 const key = (x: number, y: number) => y * COLS + x
@@ -558,16 +561,15 @@ export default function NextbotGame() {
       return {
         sprite,
         mat,
-        state: 'hunt' as BotState,
-        stateT: 0,
+        state: (i === 0 ? 'hunt' : 'stalk') as BotState, // exactly one chases at a time
         heading: 0,
         waypoint: new THREE.Vector3(p.x, 0, p.z),
-        // Stagger the first stalk so both don't peel off to stare at once.
-        huntUntilStalk: rand(HUNT_BEFORE_STALK) + i * 6,
-        repositionT: 0,
-        vanishT: 0,
         bfsTimer: 0,
         lungeArmed: true,
+        stalkKind: 'lurk' as StalkKind,
+        stalkTarget: null,
+        stalkT: 0,
+        peekHold: 0,
       }
     })
 
@@ -680,40 +682,38 @@ export default function NextbotGame() {
       return [curc % COLS, (curc / COLS) | 0]
     }
 
-    // Find a cell in front of the player (central, in view, with LOS) to stalk from.
-    function findStalkSpot(px: number, pz: number, fx: number, fz: number) {
-      let best: THREE.Vector3 | null = null
-      let bestDot = 0.87
-      for (const [gx, gy] of openCells) {
-        const c = cellCenter(gx, gy)
-        const dx = c.x - px
-        const dz = c.z - pz
-        const d = Math.hypot(dx, dz)
-        if (d < STALK_MIN_DIST || d > STALK_MAX_DIST) continue
-        const dot = (fx * dx + fz * dz) / d
-        if (dot < bestDot) continue
-        if (!hasLOS(c.x, c.z, px, pz)) continue
-        best = c
-        bestDot = dot
-      }
-      return best
-    }
-    // Find a cell out of view to re-materialize and resume the hunt.
-    function findHuntSpot(px: number, pz: number, fx: number, fz: number) {
-      let best: [THREE.Vector3, number, number] | null = null
+    // Pick a random-ish cell near the player matching a visibility want:
+    //   'seen'   — in the player's view cone WITH line of sight (to peek/appear)
+    //   'hidden' — out of view (to lurk / dart back to cover)
+    //   'any'    — anything in the distance band (fallback)
+    // Returns a grid cell the bot then paths to, so it moves through the halls
+    // and slips in and out of sight naturally instead of teleporting.
+    function findCell(
+      px: number,
+      pz: number,
+      fx: number,
+      fz: number,
+      want: 'seen' | 'hidden' | 'any',
+      minD: number,
+      maxD: number,
+      minDot = 0.2,
+    ): [number, number] | null {
+      let best: [number, number] | null = null
       let bestScore = -1
       for (const [gx, gy] of openCells) {
         const c = cellCenter(gx, gy)
         const dx = c.x - px
         const dz = c.z - pz
         const d = Math.hypot(dx, dz)
-        if (d < 6 || d > 16) continue
+        if (d < minD || d > maxD) continue
         const dot = d > 0 ? (fx * dx + fz * dz) / d : 1
-        if (dot > 0.26 && hasLOS(c.x, c.z, px, pz)) continue // must be hidden
-        const score = 16 - d + Math.random() * 5
+        const los = hasLOS(c.x, c.z, px, pz)
+        if (want === 'seen' && !(los && dot > minDot)) continue
+        if (want === 'hidden' && los && dot > 0.26) continue // visible → not hidden
+        const score = (want === 'seen' ? dot : maxD - d) + Math.random() * 3
         if (score > bestScore) {
           bestScore = score
-          best = [c, gx, gy]
+          best = [gx, gy]
         }
       }
       return best
@@ -727,20 +727,23 @@ export default function NextbotGame() {
     let vy = 0
     let grounded = true
 
+    // Which bot is currently "it", and time until the role hands off.
+    let hunterTurnT = rand(HUNT_TURN)
+
     const shutNearestDoor = () => {
       for (const d of doors) {
         if (d.shut) continue
         if (Math.hypot(d.c.x - camera.position.x, d.c.z - camera.position.z) < DOOR_REACH) {
           d.shut = true
           shutDoors.add(key(d.gx, d.gy))
-          // Cut them off: any hunter that can't see you must reroute — or stalk.
-          for (const b of bots) {
-            if (
-              b.state === 'hunt' &&
-              !hasLOS(b.sprite.position.x, b.sprite.position.z, camera.position.x, camera.position.z)
-            )
-              b.huntUntilStalk = Math.min(b.huntUntilStalk, 0.1)
-          }
+          // If the active hunter can't see you now, cut its turn short — it hands
+          // off to a lurker (which may be better placed), forcing the reroute.
+          const hunter = bots.find((b) => b.state === 'hunt')
+          if (
+            hunter &&
+            !hasLOS(hunter.sprite.position.x, hunter.sprite.position.z, camera.position.x, camera.position.z)
+          )
+            hunterTurnT = Math.min(hunterTurnT, 0.2)
           return
         }
       }
@@ -781,18 +784,73 @@ export default function NextbotGame() {
     // ── AI state ──
     let dangerSmooth = 0
 
-    const enterStalk = (b: Bot, spot: THREE.Vector3) => {
-      b.sprite.position.set(spot.x, 1.55, spot.z)
-      b.mat.opacity = 0 // materialize in
-      b.state = 'stalk'
-      b.stateT = 0
-      b.vanishT = 0
-      audio.play('stalk')
+    const makeHunter = (b: Bot) => {
+      b.state = 'hunt'
+      b.bfsTimer = 0
+      b.lungeArmed = true
     }
-    const enterReposition = (b: Bot) => {
-      b.state = 'reposition'
-      b.stateT = 0
-      b.repositionT = rand(REPOSITION_TIME)
+    const enterStalk = (b: Bot) => {
+      b.state = 'stalk'
+      b.stalkTarget = null // pick a fresh move next frame
+      b.stalkT = 0
+      b.bfsTimer = 0
+    }
+    // Choose the stalker's next move: peek into view, lurk in cover, or a rush.
+    const chooseStalkMove = (b: Bot, px: number, pz: number, fx: number, fz: number) => {
+      const roll = Math.random()
+      let kind: StalkKind
+      let target: [number, number] | null
+      if (roll < 0.4) {
+        kind = 'peek' // slip to a spot you can just see, then dart back
+        target = findCell(px, pz, fx, fz, 'seen', 6, STALK_MAX_DIST, 0.55)
+      } else if (roll < 0.75) {
+        kind = 'lurk' // drift to cover, out of sight
+        target = findCell(px, pz, fx, fz, 'hidden', 5, 14)
+      } else {
+        kind = 'rush' // charge in close and in view… then retreat
+        target = findCell(px, pz, fx, fz, 'seen', 3, 8, 0.2)
+      }
+      if (!target) target = findCell(px, pz, fx, fz, 'any', 4, 16)
+      b.stalkKind = kind
+      b.stalkTarget = target
+      b.stalkT = rand(STALK_RETARGET)
+      b.peekHold = rand(PEEK_HOLD)
+      if (kind === 'peek' || kind === 'rush') audio.play('stalk')
+    }
+    // Send a stalker back to cover (the "back out and retreat" beat).
+    const startRetreat = (b: Bot, px: number, pz: number, fx: number, fz: number) => {
+      b.stalkKind = 'lurk'
+      b.stalkTarget = findCell(px, pz, fx, fz, 'hidden', 6, 15) ?? findCell(px, pz, fx, fz, 'any', 5, 16)
+      b.stalkT = rand(STALK_RETARGET)
+      b.peekHold = rand(PEEK_HOLD)
+    }
+    // Move a bot one step toward a grid cell via BFS; returns true once close.
+    const stepToward = (b: Bot, target: [number, number], spd: number, dt: number, t: number) => {
+      const bp = b.sprite.position
+      const bgx = Math.floor(bp.x / CELL)
+      const bgy = Math.floor(bp.z / CELL)
+      b.bfsTimer -= dt
+      if (b.bfsTimer <= 0) {
+        b.bfsTimer = 0.15
+        const step = bfsStep(bgx, bgy, target[0], target[1])
+        const c = step ? cellCenter(step[0], step[1]) : cellCenter(target[0], target[1])
+        b.waypoint.set(c.x, 0, c.z)
+      }
+      const desired = Math.atan2(b.waypoint.x - bp.x, b.waypoint.z - bp.z)
+      let diff = desired - b.heading
+      while (diff > Math.PI) diff -= 2 * Math.PI
+      while (diff < -Math.PI) diff += 2 * Math.PI
+      const turn = BOT_TURN * 1.6 // stalkers are nimble at low speed
+      b.heading += Math.max(-turn * dt, Math.min(turn * dt, diff))
+      const align = 1 - Math.min(Math.abs(diff) / (Math.PI / 2), 1) * 0.5
+      const bs = spd * align * dt
+      tmp.set(bp.x + Math.sin(b.heading) * bs, 0, bp.z + Math.cos(b.heading) * bs)
+      collide(tmp, 0.6)
+      bp.x = tmp.x
+      bp.z = tmp.z
+      bp.y = 1.5 + Math.sin(t * 3 + b.heading) * 0.1
+      const tc = cellCenter(target[0], target[1])
+      return Math.hypot(bp.x - tc.x, bp.z - tc.z) < 1.3
     }
 
     // ── Loop ──
@@ -839,38 +897,50 @@ export default function NextbotGame() {
           grounded = true
         }
 
-        // ── Bots: each runs its own copy of the state machine ──
-        let anyHunting = false
+        // ── Bots: exactly ONE hunts at a time; the rest stalk. Roles trade off
+        //    on a timer, so you're only ever actively chased by one. ──
+        const px = camera.position.x
+        const pz = camera.position.z
+
+        hunterTurnT -= dt
+        let hunter = bots.find((b) => b.state === 'hunt') ?? null
+        if (bots.length > 1 && (hunterTurnT <= 0 || !hunter)) {
+          const stalkers = bots.filter((b) => b !== hunter && b.state === 'stalk')
+          const next = stalkers.length ? stalkers[Math.floor(Math.random() * stalkers.length)] : null
+          if (next) {
+            if (hunter) enterStalk(hunter)
+            makeHunter(next)
+            hunter = next
+          }
+          hunterTurnT = rand(HUNT_TURN)
+        } else if (!hunter) {
+          makeHunter(bots[0])
+          hunter = bots[0]
+        }
+
         let footstepBot: Bot | null = null
-        let footstepDist = Infinity
         let maxDanger = 0
         let caught = false
 
         for (const b of bots) {
           const bp = b.sprite.position
-          const toBotX = bp.x - camera.position.x
-          const toBotZ = bp.z - camera.position.z
+          const toBotX = bp.x - px
+          const toBotZ = bp.z - pz
           const distP = Math.hypot(toBotX, toBotZ) || 0.001
-          const losBot = hasLOS(bp.x, bp.z, camera.position.x, camera.position.z)
+          const losBot = hasLOS(bp.x, bp.z, px, pz)
           const dotB = (fwd.x * toBotX + fwd.z * toBotZ) / distP
-          const seen = losBot && dotB > 0.62 // player is looking at it
-
-          b.stateT += dt
+          const seen = losBot && dotB > 0.45 // player currently has it in view
 
           if (b.state === 'hunt') {
-            anyHunting = true
-            if (distP < footstepDist) {
-              footstepDist = distP
-              footstepBot = b
-            }
+            footstepBot = b
             // BFS/LOS chase
-            const pgx = Math.floor(camera.position.x / CELL)
-            const pgy = Math.floor(camera.position.z / CELL)
+            const pgx = Math.floor(px / CELL)
+            const pgy = Math.floor(pz / CELL)
             const bgx = Math.floor(bp.x / CELL)
             const bgy = Math.floor(bp.z / CELL)
             b.bfsTimer -= dt
             if (losBot) {
-              b.waypoint.set(camera.position.x, 0, camera.position.z)
+              b.waypoint.set(px, 0, pz)
             } else if (b.bfsTimer <= 0) {
               b.bfsTimer = 0.15
               const step = bfsStep(bgx, bgy, pgx, pgy)
@@ -902,52 +972,40 @@ export default function NextbotGame() {
             bp.z = tmp.z
             bp.y = 1.5 + Math.sin(t * 3 + b.heading) * 0.12
 
-            // Occasionally break off to stalk (not while pouncing on you).
-            b.huntUntilStalk -= dt
-            if (b.huntUntilStalk <= 0 && distP > 7 && !(losBot && distP < 6)) {
-              const spot = findStalkSpot(camera.position.x, camera.position.z, fwd.x, fwd.z)
-              if (spot) enterStalk(b, spot)
-              else b.huntUntilStalk = 1.5
-            }
-
-            // Catch (only a solid, hunting bot bites)
-            if (distP < CATCH_DIST && b.mat.opacity > 0.6) caught = true
-          } else if (b.state === 'stalk') {
-            // Motionless stare; vanishes when you look away or come too close.
-            bp.y = 1.55 + Math.sin(t * 1.4) * 0.04
-            if (!seen) b.vanishT += dt
-            else b.vanishT = 0
-            if (distP < 5 || b.vanishT > STALK_VANISH_LOOKAWAY || b.stateT > STALK_MAX_TIME) enterReposition(b)
+            // Catch (only the active hunter bites)
+            if (distP < CATCH_DIST) caught = true
           } else {
-            // reposition — invisible, then re-materialize out of view and hunt
-            b.repositionT -= dt
-            if (b.repositionT <= 0) {
-              const spot = findHuntSpot(camera.position.x, camera.position.z, fwd.x, fwd.z)
-              if (spot) {
-                b.sprite.position.set(spot[0].x, 1.5, spot[0].z)
-                b.heading = Math.atan2(camera.position.x - spot[0].x, camera.position.z - spot[0].z)
+            // ── Stalk: peek / lurk / rush, PATHING between spots so it slinks in
+            //    and out of sight — round a corner, hold your gaze, dart back. ──
+            if (!b.stalkTarget || b.stalkT <= 0) chooseStalkMove(b, px, pz, fwd.x, fwd.z)
+            b.stalkT -= dt
+            // Once it's let you get a good look (peek/rush), retreat to cover.
+            if (b.stalkKind !== 'lurk' && seen) {
+              b.peekHold -= dt
+              if (b.peekHold <= 0) startRetreat(b, px, pz, fwd.x, fwd.z)
+            }
+            if (b.stalkTarget) {
+              const spd = b.stalkKind === 'rush' ? BOT_SPEED * 0.85 : STALK_SPEED
+              if (stepToward(b, b.stalkTarget, spd, dt, t)) {
+                if (b.stalkKind === 'lurk') b.stalkT = Math.min(b.stalkT, rand([0.3, 1.1] as [number, number]))
+                else startRetreat(b, px, pz, fwd.x, fwd.z) // reached a peek/rush point → back out
               }
-              b.state = 'hunt'
-              b.stateT = 0
-              b.huntUntilStalk = rand(HUNT_BEFORE_STALK)
-              b.bfsTimer = 0
             }
           }
 
-          // Opacity: fade in when present, fade out while repositioning.
-          const targetOp = b.state === 'reposition' ? 0 : 1
-          b.mat.opacity += (targetOp - b.mat.opacity) * Math.min(1, dt * 7)
-          b.sprite.visible = b.mat.opacity > 0.02
+          // Bots stay solid; you glimpse the stalkers as they slip through halls.
+          b.mat.opacity += (1 - b.mat.opacity) * Math.min(1, dt * 8)
+          b.sprite.visible = true
 
           // Scariest bot drives camera shake + heartbeat.
           let d = 0
           if (b.state === 'hunt') d = Math.max(0, 1 - distP / SHAKE_RANGE)
-          else if (b.state === 'stalk') d = 0.3 + 0.25 * Math.max(0, 1 - distP / STALK_MAX_DIST)
+          else if (seen) d = 0.28 + 0.22 * Math.max(0, 1 - distP / STALK_MAX_DIST) // a peek is a jolt
           if (d > maxDanger) maxDanger = d
         }
 
-        // Positional footsteps ride the nearest hunter; silent when none hunt.
-        if (anyHunting && footstepBot) {
+        // Positional footsteps ride the active hunter.
+        if (footstepBot) {
           audioAnchor.position.copy(footstepBot.sprite.position)
           audio.startLoop('footsteps')
         } else {
@@ -1084,10 +1142,11 @@ export default function NextbotGame() {
               <>
                 <h1 className="text-2xl font-bold text-slate-50">Don’t Get Sipped ☕</h1>
                 <p className="mt-3 text-sm leading-relaxed text-slate-300">
-                  You’re Mr. G’s chai latte, lost in the dark. <span className="text-rose-300">Two</span> of his faces hunt
-                  you — fast in the open, slow to turn. Round corners to lose them, and watch for the times one just… stops
-                  and stares. Spot a rare hole punched in a wall? Take a running jump through it — they’re too big to
-                  follow. Grab all {HALL_PASSES} hall passes to escape.
+                  You’re Mr. G’s chai latte, lost in the dark. <span className="text-rose-300">Two</span> of his faces are
+                  loose — but only one gives chase at a time, fast in the open and slow to turn. The other lurks: peeking
+                  around corners, darting in and out of sight… and they trade off. Round corners to shake the chaser, and
+                  don’t trust the quiet. Spot a rare hole punched in a wall? Take a running jump through it — they’re too
+                  big to follow. Grab all {HALL_PASSES} hall passes to escape.
                 </p>
                 <p className="mt-3 text-xs text-slate-500">
                   WASD move · Shift run · Space jump · Mouse look · <span className="text-cyan-300">E</span> seal a
