@@ -11,7 +11,8 @@ URLs in `src/games/audio.ts`.
 | `ambient.mp3`   | Loops the whole time you're playing                       | Low dread bed; keep it quiet/droney    |
 | `heartbeat.mp3` | Loops; volume swells as the bot gets close                | Steady pulse; starts silent            |
 | `footsteps.mp3` | Loops while the bot is **hunting** you                    | **Positional** — pans/fades in 3D from the bot |
-| `stalk.mp3`     | One-shot when the bot materializes to **stalk/stare**     | Short stinger                          |
+| `stomp.mp3`     | Repeated thud as the chaser gets **near** (cadence tightens the closer he is) | One stomp; the game repeats it |
+| `stalk.mp3`     | One-shot when a stalker **peeks / rushes** into view       | Short stinger                          |
 | `lunge.mp3`     | One-shot when it locks on and lunges point-blank          | Short growl/whoosh                     |
 | `catch.mp3`     | One-shot on capture (the jumpscare)                       | The scream                             |
 

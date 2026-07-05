@@ -42,7 +42,9 @@ const WALK = 6.6
 const RUN = 12.2
 const BOT_SPEED = 11 // a touch under a full sprint, so straightaways still buy distance…
 const BOT_TURN = 2.1 // …and a sluggish turn rate means corners really shake it
-const BOT_COUNT = 2 // two of Mr. G's faces hunt you
+const MIN_BOTS = 1
+const MAX_BOTS = 5
+const DEFAULT_BOTS = 2
 const CATCH_DIST = 1.5
 const HALL_PASSES = 5
 
@@ -55,6 +57,9 @@ const STALK_SPEED = 5.4 // sneak pace between peeks (much slower than a chase)
 const STALK_RETARGET: [number, number] = [2.4, 4.5] // how long to commit to a lurk move
 const PEEK_HOLD: [number, number] = [0.35, 1.0] // seconds it lets you see it before darting back
 const SHAKE_RANGE = 9 // bot within this many units starts to rattle the camera
+const STOMP_RANGE = 11 // chaser within this many units → you hear heavy stomps
+const STOMP_SLOW = 0.58 // seconds between stomps at the edge of range…
+const STOMP_FAST = 0.26 // …tightening to this when he's right on top of you
 
 // Map generation
 const ROOM_TRIES = 90
@@ -261,6 +266,7 @@ export default function NextbotGame() {
   const [phase, setPhase] = useState<Phase>('menu')
   const [passes, setPasses] = useState(0)
   const [runId, setRunId] = useState(0)
+  const [botCount, setBotCount] = useState(DEFAULT_BOTS)
   const phaseRef = useRef<Phase>('menu')
   const startRef = useRef<() => void>(() => {})
   phaseRef.current = phase
@@ -289,20 +295,25 @@ export default function NextbotGame() {
       },
       { c: openCells[0], d: -1 },
     ).c
-    // Second hunter starts far from BOTH the player and the first bot, so the two
-    // approach from different sides rather than stacking on one another.
-    const botCell2 = openCells.reduce(
-      (best, c) => {
-        const d =
-          Math.abs(c[0] - startCell[0]) +
-          Math.abs(c[1] - startCell[1]) +
-          Math.abs(c[0] - botCell[0]) +
-          Math.abs(c[1] - botCell[1])
-        return d > best.d ? { c, d } : best
-      },
-      { c: openCells[0], d: -1 },
-    ).c
-    const spawnCells = [botCell, botCell2].slice(0, BOT_COUNT)
+    // Spread the hunters out (farthest-point sampling): seed with the cell
+    // farthest from the player, then each new spawn maximizes its distance to the
+    // player AND every spawn already placed, so they come from different sides.
+    const nBots = Math.max(MIN_BOTS, Math.min(MAX_BOTS, botCount))
+    const spawnCells: [number, number][] = [botCell]
+    while (spawnCells.length < nBots) {
+      const avoid = [startCell, ...spawnCells]
+      let best = openCells[0]
+      let bestScore = -1
+      for (const c of openCells) {
+        let score = Infinity
+        for (const a of avoid) score = Math.min(score, Math.abs(c[0] - a[0]) + Math.abs(c[1] - a[1]))
+        if (score > bestScore) {
+          bestScore = score
+          best = c
+        }
+      }
+      spawnCells.push(best)
+    }
 
     // ── Doors: rare corridor chokepoints that don't disconnect the map when
     //    sealed (so the bot can always reroute — you never hard-trap him).
@@ -857,6 +868,7 @@ export default function NextbotGame() {
     const clock = new THREE.Clock()
     let bob = 0
     let raf = 0
+    let stompTimer = 0
     const tmp = new THREE.Vector3()
 
     function frame() {
@@ -919,6 +931,7 @@ export default function NextbotGame() {
         }
 
         let footstepBot: Bot | null = null
+        let hunterDist = Infinity
         let maxDanger = 0
         let caught = false
 
@@ -933,6 +946,7 @@ export default function NextbotGame() {
 
           if (b.state === 'hunt') {
             footstepBot = b
+            hunterDist = distP
             // BFS/LOS chase
             const pgx = Math.floor(px / CELL)
             const pgy = Math.floor(pz / CELL)
@@ -1010,6 +1024,18 @@ export default function NextbotGame() {
           audio.startLoop('footsteps')
         } else {
           audio.stopLoop('footsteps')
+        }
+
+        // Heavy stomps once the chaser is nearby; cadence tightens as he closes.
+        if (hunterDist < STOMP_RANGE) {
+          stompTimer -= dt
+          if (stompTimer <= 0) {
+            audio.play('stomp')
+            const closeness = 1 - hunterDist / STOMP_RANGE // 0 at edge → 1 point-blank
+            stompTimer = STOMP_SLOW - (STOMP_SLOW - STOMP_FAST) * closeness
+          }
+        } else {
+          stompTimer = 0 // ready to thud the instant he's close again
         }
 
         if (caught) {
@@ -1096,7 +1122,10 @@ export default function NextbotGame() {
       faceTex.dispose()
       if (renderer.domElement.parentNode === mount) mount.removeChild(renderer.domElement)
     }
-  }, [runId])
+    // Rebuild the level when the hunter count changes (only ever tweaked from the
+    // menu, so the rebuild is invisible to the player).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [runId, botCount])
 
   function retry() {
     setPasses(0)
@@ -1142,16 +1171,32 @@ export default function NextbotGame() {
               <>
                 <h1 className="text-2xl font-bold text-slate-50">Don’t Get Sipped ☕</h1>
                 <p className="mt-3 text-sm leading-relaxed text-slate-300">
-                  You’re Mr. G’s chai latte, lost in the dark. <span className="text-rose-300">Two</span> of his faces are
-                  loose — but only one gives chase at a time, fast in the open and slow to turn. The other lurks: peeking
-                  around corners, darting in and out of sight… and they trade off. Round corners to shake the chaser, and
-                  don’t trust the quiet. Spot a rare hole punched in a wall? Take a running jump through it — they’re too
-                  big to follow. Grab all {HALL_PASSES} hall passes to escape.
+                  You’re Mr. G’s chai latte, lost in the dark. His face is loose in the halls — but only{' '}
+                  <span className="text-rose-300">one gives chase</span> at a time, fast in the open and slow to turn. Any
+                  others lurk: peeking around corners, darting in and out of sight… and they trade off. Round corners to
+                  shake the chaser, and don’t trust the quiet. Spot a rare hole punched in a wall? Take a running jump
+                  through it — they’re too big to follow. Grab all {HALL_PASSES} hall passes to escape.
                 </p>
                 <p className="mt-3 text-xs text-slate-500">
                   WASD move · Shift run · Space jump · Mouse look · <span className="text-cyan-300">E</span> seal a
                   powered door (rare) · Esc pause
                 </p>
+                <div className="mt-4 flex items-center justify-center gap-2 text-xs text-slate-400">
+                  <span className="uppercase tracking-wide">Hunters</span>
+                  {Array.from({ length: MAX_BOTS - MIN_BOTS + 1 }, (_, k) => MIN_BOTS + k).map((n) => (
+                    <button
+                      key={n}
+                      onClick={() => setBotCount(n)}
+                      className={`grid h-7 w-7 place-items-center rounded-md border text-sm font-semibold transition-colors ${
+                        botCount === n
+                          ? 'border-rose-400/60 bg-rose-500/25 text-rose-100'
+                          : 'border-white/10 bg-white/5 text-slate-300 hover:bg-white/10'
+                      }`}
+                    >
+                      {n}
+                    </button>
+                  ))}
+                </div>
                 <button
                   onClick={() => startRef.current()}
                   className="mt-5 rounded-xl bg-cyan-500/80 px-6 py-2 text-sm font-semibold text-black hover:bg-cyan-400"
