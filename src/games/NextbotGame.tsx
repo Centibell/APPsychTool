@@ -15,20 +15,23 @@ import { GameAudio } from './audio'
 //  real rooms and open spaces linked by looping halls — learnable but different
 //  every run.
 //
-//  Two bots share a coordinated state machine — exactly ONE actively chases at
-//  a time (fair, since you don't know the layout), the rest stalk, and they
-//  trade off the "hunter" role on a timer:
+//  1–5 bots (menu-selectable) share a coordinated FSM: exactly ONE actively
+//  chases at a time (fair, since you don't know the layout); the rest STALK.
+//  The "hunter" role reassigns to whichever bot is closest to you THROUGH the
+//  halls — a BFS distance field from your cell, refreshed a few times a second —
+//  with a scheduled timer for variety. So vaulting a player-only wall gap (which
+//  the bots can't fit through) flips the chase to a bot on your side, not the
+//  one now stranded far away.
 //    • hunt  — BFS-pathfinds to you; locks on and lunges with line-of-sight.
-//    • stalk — pathfinds between spots to slink in and out of view: peek around
-//              a corner and hold your gaze, lurk in cover, or rush in close then
-//              dart back out (classic peek/《SCP-173》/nextbot dread behavior).
+//    • stalk — glimpse-and-flee (documented nextbot behavior): sprint across a
+//              distant hallway, a quick corner peek then bolt, never linger.
 //
 //  Very rarely the map seeds a powered door: seal it (E) mid-chase to cut the
-//  hunter off, forcing its turn to hand off early — a long reroute or a stalk.
+//  hunter off, forcing a long reroute or an early handoff.
 //
-//  Deliberately cheap so it runs on weak hardware: flat-shaded instanced walls,
-//  no shadows, one spotlight, heavy fog + a film-grain overlay to hide the low
-//  fidelity. Lazy-loaded (dynamic import) so none of this ships until unlocked.
+//  Deliberately cheap for weak hardware: flat-shaded instanced walls, no
+//  shadows, one spotlight + a few flickering glow fixtures, heavy fog + a
+//  film-grain overlay. Lazy-loaded (dynamic import) so nothing ships unlocked.
 // ─────────────────────────────────────────────────────────────────────────
 
 const COLS = 23 // odd for the maze grid
